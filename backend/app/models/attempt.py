@@ -24,4 +24,4 @@ class ReadingAttempt(Base):
     max_score: Mapped[int] = mapped_column(Integer, default=5)
 
     answers: Mapped[dict] = mapped_column(JSONB)
-    is_correct_per_question: Mapped[list] = mapped_column(JSONB)
+    is_correct_per_question: Mapped[dict] = mapped_column(JSONB)
