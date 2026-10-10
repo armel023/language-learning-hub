@@ -19,7 +19,7 @@ def list_vocabulary(
     if deck_id is not None:
         stmt = stmt.where(VocabularyItem.deck_id == deck_id)
     if tag is not None:
-        stmt = stmt.join(VocabularyItem.tags).where(VocabularyItem.tags.any(name=tag))
+        stmt = stmt.where(VocabularyItem.tags.any(name=tag))
     if search:
         pattern = f"%{search}%"
         stmt = stmt.where(

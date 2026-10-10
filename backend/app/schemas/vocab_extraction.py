@@ -18,6 +18,7 @@ class VocabExtractionJobRead(BaseModel):
     error_message: str | None
     created_at: datetime
     completed_at: datetime | None
+    confirmed_at: datetime | None
 
 
 class VocabExtractionConfirmRequest(BaseModel):

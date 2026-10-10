@@ -14,6 +14,7 @@ from app.models.vocabulary import ExtractionStatus, FileType
 from app.parsing import docx_parser, pdf_parser, text_parser
 from app.schemas.ai_outputs import ExtractedVocabEntry, VocabExtractionAIOutput
 from app.schemas.vocab_extraction import VocabExtractionConfirmRequest
+from app.services import deck_service
 
 logger = logging.getLogger(__name__)
 
@@ -159,8 +160,10 @@ def run_extraction(
     return job
 
 
-def get_job_or_404(db: Session, user_id: uuid.UUID, job_id: uuid.UUID) -> VocabExtractionJob:
-    job = db.get(VocabExtractionJob, job_id)
+def get_job_or_404(
+    db: Session, user_id: uuid.UUID, job_id: uuid.UUID, lock: bool = False
+) -> VocabExtractionJob:
+    job = db.get(VocabExtractionJob, job_id, with_for_update=lock)
     if job is None or job.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Extraction job not found")
     return job
@@ -169,12 +172,20 @@ def get_job_or_404(db: Session, user_id: uuid.UUID, job_id: uuid.UUID) -> VocabE
 def confirm_extraction(
     db: Session, user_id: uuid.UUID, job_id: uuid.UUID, payload: VocabExtractionConfirmRequest
 ) -> list[VocabularyItem]:
-    job = get_job_or_404(db, user_id, job_id)
+    # Row lock so two concurrent confirms (e.g. a double click) can't both pass the check below.
+    job = get_job_or_404(db, user_id, job_id, lock=True)
     if job.status != ExtractionStatus.COMPLETED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only completed extraction jobs can be confirmed.",
         )
+    if job.confirmed_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This extraction job has already been confirmed.",
+        )
+    if payload.deck_id is not None:
+        deck_service.get_deck_or_404(db, user_id, payload.deck_id)
 
     created_items = []
     for entry in payload.entries:
@@ -188,6 +199,7 @@ def confirm_extraction(
         db.add(item)
         created_items.append(item)
 
+    job.confirmed_at = datetime.now(timezone.utc)
     db.commit()
     for item in created_items:
         db.refresh(item)

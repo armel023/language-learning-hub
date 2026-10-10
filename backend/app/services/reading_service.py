@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.ai.base import AIProvider
 from app.ai.json_validation import AIGenerationError, generate_validated
+from app.ai.ollama_provider import OllamaProvider
 from app.ai.prompts import reading_teil1, reading_teil2, reading_teil3, reading_teil4
-from app.config import get_settings
 from app.models import GeneratedBy, ReadingExercise
 from app.models.reading_exercise import ExerciseType
 from app.repositories import reading_repo
@@ -64,8 +64,10 @@ def _run_ai_generation(ai_provider, system_prompt, user_prompt, schema, max_retr
         ) from exc
 
 
-def _generated_by() -> GeneratedBy:
-    return GeneratedBy.AI_OLLAMA if get_settings().ai_provider == "ollama" else GeneratedBy.AI_GEMINI
+def _generated_by(ai_provider: AIProvider) -> GeneratedBy:
+    # Derived from the provider that actually ran, not from settings, so the label stays
+    # correct if a different provider is injected (tests, per-request overrides).
+    return GeneratedBy.AI_OLLAMA if isinstance(ai_provider, OllamaProvider) else GeneratedBy.AI_GEMINI
 
 
 def _generate_teil1(
@@ -84,7 +86,7 @@ def _generate_teil1(
         topic=payload.topic,
         content=content,
         answer_key=answer_key,
-        generated_by=_generated_by(),
+        generated_by=_generated_by(ai_provider),
         generation_prompt=user_prompt,
     )
     return reading_repo.create_exercise(db, exercise)
@@ -107,7 +109,7 @@ def _generate_teil2(
         topic=payload.topic,
         content=content,
         answer_key=answer_key,
-        generated_by=_generated_by(),
+        generated_by=_generated_by(ai_provider),
         generation_prompt=user_prompt,
     )
     return reading_repo.create_exercise(db, exercise)
@@ -129,7 +131,7 @@ def _generate_teil3(
         topic=payload.topic,
         content=content,
         answer_key=answer_key,
-        generated_by=_generated_by(),
+        generated_by=_generated_by(ai_provider),
         generation_prompt=user_prompt,
     )
     return reading_repo.create_exercise(db, exercise)
@@ -152,7 +154,7 @@ def _generate_teil4(
         topic=payload.topic,
         content=content,
         answer_key=answer_key,
-        generated_by=_generated_by(),
+        generated_by=_generated_by(ai_provider),
         generation_prompt=user_prompt,
     )
     return reading_repo.create_exercise(db, exercise)

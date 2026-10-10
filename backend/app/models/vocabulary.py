@@ -52,7 +52,7 @@ class VocabularyItem(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    deck_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("decks.id"), nullable=True)
+    deck_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("decks.id", ondelete="SET NULL"), nullable=True)
 
     word: Mapped[str] = mapped_column(String(255))
     part_of_speech: Mapped[PartOfSpeech] = mapped_column(pg_enum(PartOfSpeech, "part_of_speech"))
@@ -113,3 +113,5 @@ class VocabExtractionJob(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set once the user saves the extracted entries, so a job can't be confirmed twice.
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

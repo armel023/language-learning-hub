@@ -66,6 +66,7 @@ export interface VocabExtractionJob {
   error_message: string | null;
   created_at: string;
   completed_at: string | null;
+  confirmed_at: string | null;
 }
 
 export type StudyOutcome = "correct" | "incorrect_hard" | "incorrect_moderate";
