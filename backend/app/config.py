@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     # Per-user tokens per UTC day across all agent runs; 0 disables the budget.
     ai_daily_token_budget: int = 1_000_000
 
+    # Lesen: how many times the generator may revise a draft the checker disagreed with, and
+    # whether a still-unverified exercise is rejected (True) or saved with verified=false.
+    lesen_max_revisions: int = 1
+    lesen_require_verification: bool = True
+
     gemini_api_key: str = ""
     gemini_model: str = "gemini-flash-lite-latest"
 

@@ -1,138 +1,40 @@
-import { useState } from "react";
-import { Link as RouterLink } from "react-router-dom";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
 import {
-  Alert,
   Box,
-  Button,
   Card,
-  CardActionArea,
   CardContent,
   Chip,
-  CircularProgress,
   Divider,
   FormControl,
   FormControlLabel,
   Radio,
   RadioGroup,
   Stack,
-  TextField,
   Typography,
 } from "@mui/material";
 
-import { readingApi } from "../../api/reading";
-import { useGenerateReadingExercise, useReadingExercises, useSubmitReadingAttempt } from "../../hooks/useReading";
-import type { ReadingAttemptResult, ReadingExerciseDetail, ReadingTeil2Content } from "../../types/api";
+import { ExerciseShell, type ExerciseBodyProps } from "../../components/ExerciseShell";
+import type { ReadingTeil2Content } from "../../types/api";
 
 export function Teil2Page() {
-  const { data: previousExercises, isLoading: isLoadingList } = useReadingExercises(2);
-  const generateExercise = useGenerateReadingExercise();
-  const submitAttempt = useSubmitReadingAttempt();
+  return (
+    <ExerciseShell<ReadingTeil2Content, number>
+      teil={2}
+      description={`A department store's floor directory is shown. For each situation, pick which floor it belongs to - or "Anderer Stock" if it's neither of the two offered.`}
+      topicLabel="Store type (optional)"
+      topicPlaceholder="e.g. Kaufhaus, Baumarkt, Möbelhaus"
+      maxWidth={720}
+      isComplete={(content, answers) => content.aufgaben.every((a) => answers[String(a.aufgabe_number)] !== undefined)}
+      Body={Teil2Body}
+    />
+  );
+}
 
-  const [storeType, setStoreType] = useState("");
-  const [exercise, setExercise] = useState<ReadingExerciseDetail | null>(null);
-  const [answers, setAnswers] = useState<Record<string, number>>({});
-  const [result, setResult] = useState<ReadingAttemptResult | null>(null);
-
-  function startExercise(ex: ReadingExerciseDetail) {
-    setExercise(ex);
-    setAnswers({});
-    setResult(null);
-  }
-
-  function handleGenerate() {
-    generateExercise.mutate(
-      { teil: 2, topic: storeType || undefined, level: "A2" },
-      { onSuccess: (ex) => startExercise(ex) },
-    );
-  }
-
-  function handleSubmit() {
-    if (!exercise) return;
-    submitAttempt.mutate(
-      { exercise_id: exercise.id, answers },
-      { onSuccess: (res) => setResult(res) },
-    );
-  }
-
-  if (!exercise) {
-    return (
-      <Box maxWidth={720}>
-        <Typography variant="h4" gutterBottom>
-          Lesen - Teil 2
-        </Typography>
-        <Typography color="text.secondary" mb={3}>
-          A department store's floor directory is shown. For each situation, pick which floor it
-          belongs to - or "Anderer Stock" if it's neither of the two offered.
-        </Typography>
-
-        <Stack direction="row" spacing={2} mb={4} alignItems="flex-start">
-          <TextField
-            label="Store type (optional)"
-            placeholder="e.g. Kaufhaus, Baumarkt, Möbelhaus"
-            value={storeType}
-            onChange={(e) => setStoreType(e.target.value)}
-            size="small"
-          />
-          <Button variant="contained" onClick={handleGenerate} disabled={generateExercise.isPending}>
-            {generateExercise.isPending ? "Generating..." : "Generate new exercise"}
-          </Button>
-        </Stack>
-        {generateExercise.isError && (
-          <Alert severity="error" sx={{ mb: 3 }}>
-            Failed to generate an exercise. Please try again.
-          </Alert>
-        )}
-
-        <Typography variant="h6" gutterBottom>
-          Or practice a previous exercise
-        </Typography>
-        {isLoadingList && <CircularProgress size={24} />}
-        {previousExercises && previousExercises.length === 0 && (
-          <Typography color="text.secondary">No exercises generated yet.</Typography>
-        )}
-        <Stack spacing={1}>
-          {previousExercises?.map((ex) => (
-            <Card key={ex.id} variant="outlined">
-              <CardActionArea
-                onClick={async () => {
-                  const full = await readingApi.getExercise(ex.id);
-                  startExercise(full);
-                }}
-              >
-                <CardContent>
-                  <Typography variant="subtitle1">{ex.title}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {new Date(ex.created_at).toLocaleString()}
-                  </Typography>
-                </CardContent>
-              </CardActionArea>
-            </Card>
-          ))}
-        </Stack>
-      </Box>
-    );
-  }
-
-  const content = exercise.content as ReadingTeil2Content;
-  const allAnswered = content.aufgaben.every((a) => answers[String(a.aufgabe_number)] !== undefined);
+function Teil2Body({ content, answers, setAnswer, result }: ExerciseBodyProps<ReadingTeil2Content, number>) {
 
   return (
-    <Box maxWidth={720}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h4">{exercise.title}</Typography>
-        <Button component={RouterLink} to="/lesen" variant="text">
-          Back to Lesen
-        </Button>
-      </Stack>
-
-      {result && (
-        <Alert severity={result.score === result.max_score ? "success" : "info"} sx={{ mb: 3 }}>
-          Score: {result.score} / {result.max_score}
-        </Alert>
-      )}
-
+    <>
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="overline" color="text.secondary">
@@ -200,7 +102,7 @@ export function Teil2Page() {
                   <FormControl disabled={!!result}>
                     <RadioGroup
                       value={answers[aKey] ?? ""}
-                      onChange={(e) => setAnswers((prev) => ({ ...prev, [aKey]: Number(e.target.value) }))}
+                      onChange={(e) => setAnswer(aKey, Number(e.target.value))}
                     >
                       {aufgabe.options.map((option, idx) => (
                         <FormControlLabel
@@ -228,29 +130,6 @@ export function Teil2Page() {
             );
           })}
       </Stack>
-
-      <Stack direction="row" spacing={2} mt={3}>
-        {!result ? (
-          <Button
-            variant="contained"
-            size="large"
-            disabled={!allAnswered || submitAttempt.isPending}
-            onClick={handleSubmit}
-          >
-            {submitAttempt.isPending ? "Submitting..." : "Submit answers"}
-          </Button>
-        ) : (
-          <Button variant="contained" onClick={() => setExercise(null)}>
-            Try another exercise
-          </Button>
-        )}
-      </Stack>
-
-      {submitAttempt.isError && (
-        <Alert severity="error" sx={{ mt: 2 }}>
-          Failed to submit your answers. Please try again.
-        </Alert>
-      )}
-    </Box>
+    </>
   );
 }

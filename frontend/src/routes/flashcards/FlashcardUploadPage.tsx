@@ -6,6 +6,7 @@ import {
   Box,
   Button,
   Checkbox,
+  Chip,
   CircularProgress,
   Stack,
   Table,
@@ -20,9 +21,9 @@ import {
 } from "@mui/material";
 
 import { useConfirmExtraction, useUploadFile } from "../../hooks/useVocabExtraction";
-import type { ExtractedVocabEntry, VocabExtractionJob } from "../../types/api";
+import type { ExtractedVocabCandidate, VocabExtractionJob } from "../../types/api";
 
-interface ReviewRow extends ExtractedVocabEntry {
+interface ReviewRow extends ExtractedVocabCandidate {
   included: boolean;
 }
 
@@ -43,7 +44,7 @@ export function FlashcardUploadPage() {
       onSuccess: (result) => {
         setJob(result);
         const entries = result.raw_ai_output?.entries ?? [];
-        setRows(entries.map((entry) => ({ ...entry, included: true })));
+        setRows(entries.map((entry) => ({ ...entry, included: !entry.already_in_cards })));
       },
     });
   }
@@ -54,7 +55,9 @@ export function FlashcardUploadPage() {
 
   function handleConfirm() {
     if (!job) return;
-    const entries = rows.filter((row) => row.included).map(({ included, ...entry }) => entry);
+    const entries = rows
+      .filter((row) => row.included)
+      .map(({ included, already_in_cards, ...entry }) => entry);
     confirmExtraction.mutate({ jobId: job.id, entries }, { onSuccess: () => navigate("/flashcards") });
   }
 
@@ -123,11 +126,14 @@ export function FlashcardUploadPage() {
                         />
                       </TableCell>
                       <TableCell>
-                        <TextField
-                          variant="standard"
-                          value={row.word}
-                          onChange={(e) => updateRow(index, { word: e.target.value })}
-                        />
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <TextField
+                            variant="standard"
+                            value={row.word}
+                            onChange={(e) => updateRow(index, { word: e.target.value })}
+                          />
+                          {row.already_in_cards && <Chip size="small" label="Already in your cards" />}
+                        </Stack>
                       </TableCell>
                       <TableCell>{row.article ?? "-"}</TableCell>
                       <TableCell>{row.part_of_speech}</TableCell>

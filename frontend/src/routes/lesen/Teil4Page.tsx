@@ -1,138 +1,40 @@
-import { useState } from "react";
-import { Link as RouterLink } from "react-router-dom";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
 import {
-  Alert,
   Box,
-  Button,
   Card,
-  CardActionArea,
   CardContent,
   Chip,
-  CircularProgress,
   Divider,
   Grid,
   MenuItem,
   Select,
   Stack,
-  TextField,
   Typography,
 } from "@mui/material";
 
-import { readingApi } from "../../api/reading";
-import { useGenerateReadingExercise, useReadingExercises, useSubmitReadingAttempt } from "../../hooks/useReading";
-import type { ReadingAttemptResult, ReadingExerciseDetail, ReadingTeil4Content } from "../../types/api";
+import { ExerciseShell, type ExerciseBodyProps } from "../../components/ExerciseShell";
+import type { ReadingTeil4Content } from "../../types/api";
 
 export function Teil4Page() {
-  const { data: previousExercises, isLoading: isLoadingList } = useReadingExercises(4);
-  const generateExercise = useGenerateReadingExercise();
-  const submitAttempt = useSubmitReadingAttempt();
+  return (
+    <ExerciseShell<ReadingTeil4Content, string>
+      teil={4}
+      description={`6 advertisements are shown. Match each of the 5 situations to the one ad that actually fits it - or "X" if none of them do.`}
+      topicLabel="Theme (optional)"
+      topicPlaceholder="e.g. Restaurants, Wohnungen, Sprachschulen"
+      maxWidth={820}
+      isComplete={(content, answers) => content.aufgaben.every((a) => answers[String(a.aufgabe_number)] !== undefined)}
+      Body={Teil4Body}
+    />
+  );
+}
 
-  const [theme, setTheme] = useState("");
-  const [exercise, setExercise] = useState<ReadingExerciseDetail | null>(null);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [result, setResult] = useState<ReadingAttemptResult | null>(null);
-
-  function startExercise(ex: ReadingExerciseDetail) {
-    setExercise(ex);
-    setAnswers({});
-    setResult(null);
-  }
-
-  function handleGenerate() {
-    generateExercise.mutate(
-      { teil: 4, topic: theme || undefined, level: "A2" },
-      { onSuccess: (ex) => startExercise(ex) },
-    );
-  }
-
-  function handleSubmit() {
-    if (!exercise) return;
-    submitAttempt.mutate(
-      { exercise_id: exercise.id, answers },
-      { onSuccess: (res) => setResult(res) },
-    );
-  }
-
-  if (!exercise) {
-    return (
-      <Box maxWidth={820}>
-        <Typography variant="h4" gutterBottom>
-          Lesen - Teil 4
-        </Typography>
-        <Typography color="text.secondary" mb={3}>
-          6 advertisements are shown. Match each of the 5 situations to the one ad that actually
-          fits it - or "X" if none of them do.
-        </Typography>
-
-        <Stack direction="row" spacing={2} mb={4} alignItems="flex-start">
-          <TextField
-            label="Theme (optional)"
-            placeholder="e.g. Restaurants, Wohnungen, Sprachschulen"
-            value={theme}
-            onChange={(e) => setTheme(e.target.value)}
-            size="small"
-          />
-          <Button variant="contained" onClick={handleGenerate} disabled={generateExercise.isPending}>
-            {generateExercise.isPending ? "Generating..." : "Generate new exercise"}
-          </Button>
-        </Stack>
-        {generateExercise.isError && (
-          <Alert severity="error" sx={{ mb: 3 }}>
-            Failed to generate an exercise. Please try again.
-          </Alert>
-        )}
-
-        <Typography variant="h6" gutterBottom>
-          Or practice a previous exercise
-        </Typography>
-        {isLoadingList && <CircularProgress size={24} />}
-        {previousExercises && previousExercises.length === 0 && (
-          <Typography color="text.secondary">No exercises generated yet.</Typography>
-        )}
-        <Stack spacing={1}>
-          {previousExercises?.map((ex) => (
-            <Card key={ex.id} variant="outlined">
-              <CardActionArea
-                onClick={async () => {
-                  const full = await readingApi.getExercise(ex.id);
-                  startExercise(full);
-                }}
-              >
-                <CardContent>
-                  <Typography variant="subtitle1">{ex.title}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {new Date(ex.created_at).toLocaleString()}
-                  </Typography>
-                </CardContent>
-              </CardActionArea>
-            </Card>
-          ))}
-        </Stack>
-      </Box>
-    );
-  }
-
-  const content = exercise.content as ReadingTeil4Content;
-  const allAnswered = content.aufgaben.every((a) => answers[String(a.aufgabe_number)] !== undefined);
+function Teil4Body({ content, answers, setAnswer, result }: ExerciseBodyProps<ReadingTeil4Content, string>) {
   const adByCode = Object.fromEntries(content.ads.map((ad) => [ad.code, ad]));
 
   return (
-    <Box maxWidth={820}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h4">{exercise.title}</Typography>
-        <Button component={RouterLink} to="/lesen" variant="text">
-          Back to Lesen
-        </Button>
-      </Stack>
-
-      {result && (
-        <Alert severity={result.score === result.max_score ? "success" : "info"} sx={{ mb: 3 }}>
-          Score: {result.score} / {result.max_score}
-        </Alert>
-      )}
-
+    <>
       <Typography variant="overline" color="text.secondary">
         Anzeigen
       </Typography>
@@ -208,7 +110,7 @@ export function Teil4Page() {
                     displayEmpty
                     value={answers[aKey] ?? ""}
                     disabled={!!result}
-                    onChange={(e) => setAnswers((prev) => ({ ...prev, [aKey]: e.target.value }))}
+                    onChange={(e) => setAnswer(aKey, e.target.value)}
                     sx={{ minWidth: 220 }}
                   >
                     <MenuItem value="" disabled>
@@ -239,29 +141,6 @@ export function Teil4Page() {
             );
           })}
       </Stack>
-
-      <Stack direction="row" spacing={2} mt={3}>
-        {!result ? (
-          <Button
-            variant="contained"
-            size="large"
-            disabled={!allAnswered || submitAttempt.isPending}
-            onClick={handleSubmit}
-          >
-            {submitAttempt.isPending ? "Submitting..." : "Submit answers"}
-          </Button>
-        ) : (
-          <Button variant="contained" onClick={() => setExercise(null)}>
-            Try another exercise
-          </Button>
-        )}
-      </Stack>
-
-      {submitAttempt.isError && (
-        <Alert severity="error" sx={{ mt: 2 }}>
-          Failed to submit your answers. Please try again.
-        </Alert>
-      )}
-    </Box>
+    </>
   );
 }

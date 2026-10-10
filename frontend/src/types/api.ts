@@ -54,6 +54,11 @@ export interface ExtractedVocabEntry {
   example_sentence_translation: string | null;
 }
 
+export interface ExtractedVocabCandidate extends ExtractedVocabEntry {
+  /** Set by the backend when the user already has a card for this word + part of speech. */
+  already_in_cards?: boolean;
+}
+
 export type ExtractionStatus = "pending" | "processing" | "completed" | "failed";
 export type VocabFileType = "pdf" | "docx" | "txt";
 
@@ -62,7 +67,7 @@ export interface VocabExtractionJob {
   original_filename: string;
   file_type: VocabFileType;
   status: ExtractionStatus;
-  raw_ai_output: { entries: ExtractedVocabEntry[] } | null;
+  raw_ai_output: { entries: ExtractedVocabCandidate[] } | null;
   error_message: string | null;
   created_at: string;
   completed_at: string | null;

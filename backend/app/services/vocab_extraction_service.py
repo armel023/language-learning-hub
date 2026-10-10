@@ -12,10 +12,11 @@ from app.agents.prompts.vocab_extraction import build_user_prompt
 from app.agents.vocab import vocab_extraction_agent
 from app.config import get_settings
 from app.jobs.runner import JobFailed, enqueue, job_handler
-from app.models import Job, VocabExtractionJob, VocabSource, VocabularyItem
+from app.models import Job, PartOfSpeech, VocabExtractionJob, VocabSource, VocabularyItem
 from app.models.vocabulary import ExtractionStatus, FileType
 from app.parsing import docx_parser, pdf_parser, text_parser
-from app.schemas.ai_outputs import ExtractedVocabEntry, VocabExtractionAIOutput
+from app.repositories import vocabulary_repo
+from app.schemas.ai_outputs import ExtractedVocabEntry
 from app.schemas.vocab_extraction import VocabExtractionConfirmRequest
 from app.services import deck_service
 
@@ -78,11 +79,15 @@ def _chunk_text(text: str, chunk_size: int = CHUNK_SIZE_CHARS) -> list[str]:
     return chunks[:MAX_CHUNKS]
 
 
+def _word_key(entry: ExtractedVocabEntry) -> tuple[str, PartOfSpeech]:
+    return entry.word.strip().lower(), entry.part_of_speech
+
+
 def _dedupe_entries(entries: list[ExtractedVocabEntry]) -> list[ExtractedVocabEntry]:
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple[str, PartOfSpeech]] = set()
     unique: list[ExtractedVocabEntry] = []
     for entry in entries:
-        key = (entry.word.strip().lower(), entry.part_of_speech.value)
+        key = _word_key(entry)
         if key in seen:
             continue
         seen.add(key)
@@ -173,8 +178,15 @@ def _extraction_job(db: Session, job: Job) -> dict:
         raise JobFailed("budget_exceeded" if budget_hit else "ai_failed", vocab_job.error_message)
 
     unique_entries = _dedupe_entries(all_entries)
+    # A plain lookup, not an agent tool: deterministic, free, and works on offline models
+    # without tool calling. The review screen leaves flagged words unticked by default.
+    existing = vocabulary_repo.existing_word_keys(db, job.user_id, {_word_key(e) for e in unique_entries})
     vocab_job.status = ExtractionStatus.COMPLETED
-    vocab_job.raw_ai_output = VocabExtractionAIOutput(entries=unique_entries).model_dump(mode="json")
+    vocab_job.raw_ai_output = {
+        "entries": [
+            {**e.model_dump(mode="json"), "already_in_cards": _word_key(e) in existing} for e in unique_entries
+        ]
+    }
     if chunk_errors:
         vocab_job.error_message = (
             f"{len(chunk_errors)} of {len(chunks)} chunk(s) failed to extract; showing results from the rest."

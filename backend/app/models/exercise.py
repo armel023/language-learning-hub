@@ -52,6 +52,8 @@ class Exercise(Base):
 
     generated_by: Mapped[GeneratedBy] = mapped_column(pg_enum(GeneratedBy, "generated_by"))
     generation_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # How the exercise was produced, e.g. {"verified": true, "rounds": [{"round": 0, "problems": []}]}
+    generation_meta: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # Who generated it. Exercises are shared practice material, so this is attribution, not access.
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 

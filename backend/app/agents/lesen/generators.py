@@ -1,8 +1,5 @@
-"""Lesen exercise generators, one structured-output agent per Teil.
-
-Phase 1 keeps these as single generators (behaviour-equivalent to the old generate_validated
-calls); Phase 2 adds the verifier agent that solves each exercise blind before it is saved.
-"""
+"""Lesen exercise generators, one structured-output agent per Teil. The checker that solves each
+draft blind before it is saved lives in app.agents.lesen.checker."""
 from pydantic_ai import Agent, NativeOutput
 
 from app.agents.prompts import reading_teil1, reading_teil2, reading_teil3, reading_teil4
