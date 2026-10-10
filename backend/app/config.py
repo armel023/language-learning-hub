@@ -24,6 +24,11 @@ class Settings(BaseSettings):
 
     max_upload_bytes: int = 10 * 1024 * 1024
 
+    # Background agent jobs (in-process thread pool). Inline mode runs jobs synchronously
+    # inside enqueue(), for tests and debugging.
+    jobs_max_workers: int = 4
+    jobs_run_inline: bool = False
+
     # Self-hosted trace backend (Arize Phoenix), e.g. http://phoenix:6006/v1/traces. Empty = off.
     otel_exporter_otlp_endpoint: str = ""
     otel_service_name: str = "a2-deutsch-hub-backend"

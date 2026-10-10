@@ -69,6 +69,20 @@ export interface VocabExtractionJob {
   confirmed_at: string | null;
 }
 
+export type JobStatus = "pending" | "running" | "succeeded" | "failed";
+
+export interface Job {
+  id: string;
+  kind: string;
+  status: JobStatus;
+  result: Record<string, unknown> | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
 export type StudyOutcome = "correct" | "incorrect_hard" | "incorrect_moderate";
 
 export interface StudySessionStart {

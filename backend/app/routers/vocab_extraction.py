@@ -3,7 +3,6 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.agents.core.models import ModelHandle, get_model
 from app.config import Settings, get_settings
 from app.core.dependencies import get_current_user
 from app.db.session import get_db
@@ -15,14 +14,13 @@ from app.services import vocab_extraction_service
 router = APIRouter(prefix="/vocab-extraction", tags=["vocab-extraction"])
 
 
-# Plain `def` (not async) on purpose: extraction makes blocking AI calls, so FastAPI must run
-# it in its threadpool instead of on the event loop, where it would stall every other request.
-@router.post("/upload", response_model=VocabExtractionJobRead)
+# Plain `def` (not async) on purpose: file parsing is blocking, so FastAPI runs it in its
+# threadpool. The AI extraction itself runs as a background job; poll GET /vocab-extraction/{id}.
+@router.post("/upload", response_model=VocabExtractionJobRead, status_code=202)
 def upload_file(
     file: UploadFile,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    model: ModelHandle = Depends(get_model),
     settings: Settings = Depends(get_settings),
 ) -> VocabExtractionJobRead:
     file_bytes = file.file.read(settings.max_upload_bytes + 1)
@@ -31,13 +29,8 @@ def upload_file(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"File is too large. Maximum size is {settings.max_upload_bytes // (1024 * 1024)} MB.",
         )
-    job = vocab_extraction_service.run_extraction(
-        db,
-        model,
-        current_user.id,
-        file.filename or "upload",
-        file_bytes,
-        settings.ai_json_max_retries,
+    job = vocab_extraction_service.start_extraction(
+        db, current_user.id, file.filename or "upload", file_bytes
     )
     return VocabExtractionJobRead.model_validate(job)
 

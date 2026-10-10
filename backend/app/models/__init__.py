@@ -1,7 +1,8 @@
 from app.models.ai_run import AIRun, AIRunStatus
-from app.models.attempt import ReadingAttempt
+from app.models.attempt import Attempt, AttemptStatus
 from app.models.deck import Deck, Tag
-from app.models.reading_exercise import ExerciseType, GeneratedBy, ReadingExercise
+from app.models.exercise import TEILE_PER_SKILL, Exercise, GeneratedBy, Skill
+from app.models.job import Job, JobStatus
 from app.models.user import DEFAULT_USER_ID, User
 from app.models.vocabulary import (
     Article,
@@ -17,12 +18,16 @@ from app.models.vocabulary import (
 __all__ = [
     "AIRun",
     "AIRunStatus",
-    "ReadingAttempt",
+    "Attempt",
+    "AttemptStatus",
     "Deck",
     "Tag",
-    "ExerciseType",
+    "Exercise",
     "GeneratedBy",
-    "ReadingExercise",
+    "Job",
+    "JobStatus",
+    "Skill",
+    "TEILE_PER_SKILL",
     "DEFAULT_USER_ID",
     "User",
     "Article",

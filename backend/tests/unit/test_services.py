@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy.dialects import postgresql
 
 from app.agents.core.models import ModelHandle
-from app.models import GeneratedBy, ReadingExercise, User, VocabularyItem
+from app.models import Exercise, GeneratedBy, Skill, User, VocabularyItem
 from app.models.vocabulary import ExtractionStatus, PartOfSpeech
 from app.repositories import vocabulary_repo
 from app.schemas.ai_outputs import ExtractedVocabEntry
@@ -139,7 +139,7 @@ def test_start_session_caps_at_session_size_when_many_due(monkeypatch):
 
 @pytest.fixture
 def exercise():
-    return ReadingExercise(id=uuid.uuid4(), answer_key={"answers": {"1": 0, "2": 2, "3": "X"}})
+    return Exercise(id=uuid.uuid4(), skill=Skill.LESEN, teil=1, answer_key={"answers": {"1": 0, "2": 2, "3": "X"}})
 
 
 def test_score_attempt_counts_correct_answers(monkeypatch, exercise):
@@ -277,3 +277,18 @@ def test_generated_by_follows_the_actual_provider():
 
     assert reading_service._generated_by(handle("ollama")) == GeneratedBy.AI_OLLAMA
     assert reading_service._generated_by(handle("gemini")) == GeneratedBy.AI_GEMINI
+
+
+def test_score_attempt_rejects_rubric_graded_exercise():
+    exercise = Exercise(id=uuid.uuid4(), skill=Skill.SCHREIBEN, teil=1, answer_key=None)
+    with pytest.raises(HTTPException) as exc:
+        scoring_service.score_attempt(FakeSession(), make_user(), exercise, {})
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "skill, teil, expected",
+    [(Skill.LESEN, 1, "lesen_teil1"), (Skill.HOEREN, 4, "hoeren_teil4"), (Skill.SPRECHEN, 3, "sprechen_teil3")],
+)
+def test_exercise_type_is_derived_from_skill_and_teil(skill, teil, expected):
+    assert Exercise(skill=skill, teil=teil).exercise_type == expected

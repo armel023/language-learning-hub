@@ -8,7 +8,8 @@ from app.config import get_settings
 from app.core.logging import configure_logging
 from app.db.seed import ensure_default_user
 from app.db.session import SessionLocal
-from app.routers import decks, flashcards, health, reading, study, vocab_extraction
+from app.jobs.runner import fail_interrupted_jobs
+from app.routers import decks, flashcards, health, jobs, reading, study, vocab_extraction
 
 configure_logging()
 settings = get_settings()
@@ -20,6 +21,7 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     try:
         ensure_default_user(db)
+        fail_interrupted_jobs(db)
     finally:
         db.close()
     yield
@@ -41,3 +43,4 @@ app.include_router(decks.router, prefix="/api/v1")
 app.include_router(vocab_extraction.router, prefix="/api/v1")
 app.include_router(study.router, prefix="/api/v1")
 app.include_router(reading.router, prefix="/api/v1")
+app.include_router(jobs.router, prefix="/api/v1")
