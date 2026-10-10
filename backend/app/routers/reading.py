@@ -3,8 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.ai.base import AIProvider
-from app.ai.factory import get_ai_provider
+from app.agents.core.models import ModelHandle, get_model
 from app.config import Settings, get_settings
 from app.core.dependencies import get_current_user
 from app.db.session import get_db
@@ -39,10 +38,13 @@ def get_exercise(exercise_id: uuid.UUID, db: Session = Depends(get_db)) -> Readi
 def generate_exercise(
     payload: ReadingExerciseGenerateRequest,
     db: Session = Depends(get_db),
-    ai_provider: AIProvider = Depends(get_ai_provider),
+    current_user: User = Depends(get_current_user),
+    model: ModelHandle = Depends(get_model),
     settings: Settings = Depends(get_settings),
 ) -> ReadingExerciseDetail:
-    exercise = reading_service.generate_exercise(db, ai_provider, payload, settings.ai_json_max_retries)
+    exercise = reading_service.generate_exercise(
+        db, model, current_user.id, payload, settings.ai_json_max_retries
+    )
     return ReadingExerciseDetail.model_validate(exercise)
 
 

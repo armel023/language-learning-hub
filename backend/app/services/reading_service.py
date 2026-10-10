@@ -1,12 +1,13 @@
 import uuid
+from dataclasses import dataclass
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.ai.base import AIProvider
-from app.ai.json_validation import AIGenerationError, generate_validated
-from app.ai.ollama_provider import OllamaProvider
-from app.ai.prompts import reading_teil1, reading_teil2, reading_teil3, reading_teil4
+from app.agents import lesen
+from app.agents.core.models import ModelHandle
+from app.agents.core.runner import AIBudgetExceeded, AIRunError, run_agent
+from app.agents.prompts import reading_teil1, reading_teil2, reading_teil3, reading_teil4
 from app.models import GeneratedBy, ReadingExercise
 from app.models.reading_exercise import ExerciseType
 from app.repositories import reading_repo
@@ -39,44 +40,61 @@ def get_exercise_or_404(db: Session, exercise_id: uuid.UUID) -> ReadingExercise:
 
 
 def generate_exercise(
-    db: Session, ai_provider: AIProvider, payload: ReadingExerciseGenerateRequest, max_retries: int
+    db: Session,
+    model: ModelHandle,
+    user_id: uuid.UUID,
+    payload: ReadingExerciseGenerateRequest,
+    max_retries: int,
 ) -> ReadingExercise:
+    ctx = _GenerationContext(db, model, user_id, max_retries)
     if payload.teil == 1:
-        return _generate_teil1(db, ai_provider, payload, max_retries)
+        return _generate_teil1(ctx, payload)
     if payload.teil == 2:
-        return _generate_teil2(db, ai_provider, payload, max_retries)
+        return _generate_teil2(ctx, payload)
     if payload.teil == 3:
-        return _generate_teil3(db, ai_provider, payload, max_retries)
+        return _generate_teil3(ctx, payload)
     if payload.teil == 4:
-        return _generate_teil4(db, ai_provider, payload, max_retries)
+        return _generate_teil4(ctx, payload)
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail=f"Lesen Teil {payload.teil} is coming soon.",
     )
 
 
-def _run_ai_generation(ai_provider, system_prompt, user_prompt, schema, max_retries):
+@dataclass(frozen=True)
+class _GenerationContext:
+    db: Session
+    model: ModelHandle
+    user_id: uuid.UUID
+    max_retries: int
+
+
+def _run_ai_generation(ctx: _GenerationContext, agent, user_prompt: str, feature: str):
     try:
-        return generate_validated(ai_provider, system_prompt, user_prompt, schema, max_retries=max_retries)
-    except AIGenerationError as exc:
+        return run_agent(
+            ctx.db,
+            agent,
+            user_prompt,
+            feature=feature,
+            model=ctx.model,
+            user_id=ctx.user_id,
+            max_retries=ctx.max_retries,
+        )
+    except AIBudgetExceeded as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
+    except AIRunError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail=f"AI generation failed: {exc}"
         ) from exc
 
 
-def _generated_by(ai_provider: AIProvider) -> GeneratedBy:
-    # Derived from the provider that actually ran, not from settings, so the label stays
-    # correct if a different provider is injected (tests, per-request overrides).
-    return GeneratedBy.AI_OLLAMA if isinstance(ai_provider, OllamaProvider) else GeneratedBy.AI_GEMINI
+def _generated_by(model: ModelHandle) -> GeneratedBy:
+    return GeneratedBy.AI_OLLAMA if model.provider == "ollama" else GeneratedBy.AI_GEMINI
 
 
-def _generate_teil1(
-    db: Session, ai_provider: AIProvider, payload: ReadingExerciseGenerateRequest, max_retries: int
-) -> ReadingExercise:
+def _generate_teil1(ctx: _GenerationContext, payload: ReadingExerciseGenerateRequest) -> ReadingExercise:
     user_prompt = reading_teil1.build_user_prompt(payload.topic, payload.level)
-    ai_output = _run_ai_generation(
-        ai_provider, reading_teil1.SYSTEM_PROMPT, user_prompt, ReadingTeil1AIOutput, max_retries
-    )
+    ai_output: ReadingTeil1AIOutput = _run_ai_generation(ctx, lesen.teil1_agent, user_prompt, "lesen_teil1")
     content, answer_key = _split_teil1_output(ai_output)
 
     exercise = ReadingExercise(
@@ -86,19 +104,15 @@ def _generate_teil1(
         topic=payload.topic,
         content=content,
         answer_key=answer_key,
-        generated_by=_generated_by(ai_provider),
+        generated_by=_generated_by(ctx.model),
         generation_prompt=user_prompt,
     )
-    return reading_repo.create_exercise(db, exercise)
+    return reading_repo.create_exercise(ctx.db, exercise)
 
 
-def _generate_teil2(
-    db: Session, ai_provider: AIProvider, payload: ReadingExerciseGenerateRequest, max_retries: int
-) -> ReadingExercise:
+def _generate_teil2(ctx: _GenerationContext, payload: ReadingExerciseGenerateRequest) -> ReadingExercise:
     user_prompt = reading_teil2.build_user_prompt(payload.topic, payload.level)
-    ai_output = _run_ai_generation(
-        ai_provider, reading_teil2.SYSTEM_PROMPT, user_prompt, ReadingTeil2AIOutput, max_retries
-    )
+    ai_output: ReadingTeil2AIOutput = _run_ai_generation(ctx, lesen.teil2_agent, user_prompt, "lesen_teil2")
     content, answer_key = _split_teil2_output(ai_output)
 
     title = f"Im Kaufhaus: {payload.topic}" if payload.topic else "Im Kaufhaus"
@@ -109,19 +123,15 @@ def _generate_teil2(
         topic=payload.topic,
         content=content,
         answer_key=answer_key,
-        generated_by=_generated_by(ai_provider),
+        generated_by=_generated_by(ctx.model),
         generation_prompt=user_prompt,
     )
-    return reading_repo.create_exercise(db, exercise)
+    return reading_repo.create_exercise(ctx.db, exercise)
 
 
-def _generate_teil3(
-    db: Session, ai_provider: AIProvider, payload: ReadingExerciseGenerateRequest, max_retries: int
-) -> ReadingExercise:
+def _generate_teil3(ctx: _GenerationContext, payload: ReadingExerciseGenerateRequest) -> ReadingExercise:
     user_prompt = reading_teil3.build_user_prompt(payload.topic, payload.level)
-    ai_output = _run_ai_generation(
-        ai_provider, reading_teil3.SYSTEM_PROMPT, user_prompt, ReadingTeil3AIOutput, max_retries
-    )
+    ai_output: ReadingTeil3AIOutput = _run_ai_generation(ctx, lesen.teil3_agent, user_prompt, "lesen_teil3")
     content, answer_key = _split_teil3_output(ai_output)
 
     exercise = ReadingExercise(
@@ -131,19 +141,15 @@ def _generate_teil3(
         topic=payload.topic,
         content=content,
         answer_key=answer_key,
-        generated_by=_generated_by(ai_provider),
+        generated_by=_generated_by(ctx.model),
         generation_prompt=user_prompt,
     )
-    return reading_repo.create_exercise(db, exercise)
+    return reading_repo.create_exercise(ctx.db, exercise)
 
 
-def _generate_teil4(
-    db: Session, ai_provider: AIProvider, payload: ReadingExerciseGenerateRequest, max_retries: int
-) -> ReadingExercise:
+def _generate_teil4(ctx: _GenerationContext, payload: ReadingExerciseGenerateRequest) -> ReadingExercise:
     user_prompt = reading_teil4.build_user_prompt(payload.topic, payload.level)
-    ai_output = _run_ai_generation(
-        ai_provider, reading_teil4.SYSTEM_PROMPT, user_prompt, ReadingTeil4AIOutput, max_retries
-    )
+    ai_output: ReadingTeil4AIOutput = _run_ai_generation(ctx, lesen.teil4_agent, user_prompt, "lesen_teil4")
     content, answer_key = _split_teil4_output(ai_output)
 
     title = f"Anzeigen: {payload.topic}" if payload.topic else "Anzeigen"
@@ -154,10 +160,10 @@ def _generate_teil4(
         topic=payload.topic,
         content=content,
         answer_key=answer_key,
-        generated_by=_generated_by(ai_provider),
+        generated_by=_generated_by(ctx.model),
         generation_prompt=user_prompt,
     )
-    return reading_repo.create_exercise(db, exercise)
+    return reading_repo.create_exercise(ctx.db, exercise)
 
 
 def _split_teil1_output(ai_output: ReadingTeil1AIOutput) -> tuple[dict, dict]:

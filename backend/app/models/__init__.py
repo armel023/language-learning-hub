@@ -1,3 +1,4 @@
+from app.models.ai_run import AIRun, AIRunStatus
 from app.models.attempt import ReadingAttempt
 from app.models.deck import Deck, Tag
 from app.models.reading_exercise import ExerciseType, GeneratedBy, ReadingExercise
@@ -14,6 +15,8 @@ from app.models.vocabulary import (
 )
 
 __all__ = [
+    "AIRun",
+    "AIRunStatus",
     "ReadingAttempt",
     "Deck",
     "Tag",

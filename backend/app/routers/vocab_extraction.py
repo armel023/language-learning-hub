@@ -3,8 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.ai.base import AIProvider
-from app.ai.factory import get_ai_provider
+from app.agents.core.models import ModelHandle, get_model
 from app.config import Settings, get_settings
 from app.core.dependencies import get_current_user
 from app.db.session import get_db
@@ -23,7 +22,7 @@ def upload_file(
     file: UploadFile,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    ai_provider: AIProvider = Depends(get_ai_provider),
+    model: ModelHandle = Depends(get_model),
     settings: Settings = Depends(get_settings),
 ) -> VocabExtractionJobRead:
     file_bytes = file.file.read(settings.max_upload_bytes + 1)
@@ -34,7 +33,7 @@ def upload_file(
         )
     job = vocab_extraction_service.run_extraction(
         db,
-        ai_provider,
+        model,
         current_user.id,
         file.filename or "upload",
         file_bytes,

@@ -5,7 +5,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy.dialects import postgresql
 
-from app.ai.ollama_provider import OllamaProvider
+from app.agents.core.models import ModelHandle
 from app.models import GeneratedBy, ReadingExercise, User, VocabularyItem
 from app.models.vocabulary import ExtractionStatus, PartOfSpeech
 from app.repositories import vocabulary_repo
@@ -272,6 +272,8 @@ def test_tag_filter_does_not_join_tags():
 
 
 def test_generated_by_follows_the_actual_provider():
-    ollama = OllamaProvider.__new__(OllamaProvider)
-    assert reading_service._generated_by(ollama) == GeneratedBy.AI_OLLAMA
-    assert reading_service._generated_by(object()) == GeneratedBy.AI_GEMINI
+    def handle(provider):
+        return ModelHandle(model=None, provider=provider, model_name="m")
+
+    assert reading_service._generated_by(handle("ollama")) == GeneratedBy.AI_OLLAMA
+    assert reading_service._generated_by(handle("gemini")) == GeneratedBy.AI_GEMINI

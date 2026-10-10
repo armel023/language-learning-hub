@@ -3,12 +3,13 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
+from opentelemetry import trace
 from sqlalchemy.orm import Session
-from tenacity import RetryError
 
-from app.ai.base import AIProvider
-from app.ai.json_validation import AIGenerationError, generate_validated
-from app.ai.prompts.vocab_extraction import SYSTEM_PROMPT, build_user_prompt
+from app.agents.core.models import ModelHandle
+from app.agents.core.runner import AIBudgetExceeded, AIRunError, run_agent
+from app.agents.prompts.vocab_extraction import build_user_prompt
+from app.agents.vocab import vocab_extraction_agent
 from app.models import VocabExtractionJob, VocabSource, VocabularyItem
 from app.models.vocabulary import ExtractionStatus, FileType
 from app.parsing import docx_parser, pdf_parser, text_parser
@@ -17,6 +18,7 @@ from app.schemas.vocab_extraction import VocabExtractionConfirmRequest
 from app.services import deck_service
 
 logger = logging.getLogger(__name__)
+tracer = trace.get_tracer(__name__)
 
 # Large documents are split into chunks rather than truncated, so every part of the
 # document gets a chance at extraction instead of silently dropping anything past a
@@ -84,17 +86,9 @@ def _dedupe_entries(entries: list[ExtractedVocabEntry]) -> list[ExtractedVocabEn
     return unique
 
 
-def _describe_error(exc: BaseException) -> str:
-    if isinstance(exc, RetryError):
-        inner = exc.last_attempt.exception()
-        if inner is not None:
-            return str(inner)
-    return str(exc)
-
-
 def run_extraction(
     db: Session,
-    ai_provider: AIProvider,
+    model: ModelHandle,
     user_id: uuid.UUID,
     filename: str,
     file_bytes: bytes,
@@ -111,48 +105,56 @@ def run_extraction(
     db.commit()
     db.refresh(job)
 
-    try:
-        source_text = _PARSERS[file_type](file_bytes)
-        if not source_text.strip():
-            raise ValueError("No extractable text found in the uploaded file.")
+    # One parent span per job, so every chunk's agent run lands in the same trace.
+    with tracer.start_as_current_span("vocab_extraction_job") as span:
+        span.set_attribute("app.job_id", str(job.id))
+        try:
+            source_text = _PARSERS[file_type](file_bytes)
+            if not source_text.strip():
+                raise ValueError("No extractable text found in the uploaded file.")
 
-        chunks = _chunk_text(source_text)
-        all_entries: list[ExtractedVocabEntry] = []
-        chunk_errors: list[str] = []
+            chunks = _chunk_text(source_text)
+            all_entries: list[ExtractedVocabEntry] = []
+            chunk_errors: list[str] = []
 
-        for i, chunk in enumerate(chunks):
-            try:
-                result = generate_validated(
-                    ai_provider,
-                    SYSTEM_PROMPT,
-                    build_user_prompt(chunk),
-                    VocabExtractionAIOutput,
-                    max_retries=max_retries,
+            for i, chunk in enumerate(chunks):
+                try:
+                    result = run_agent(
+                        db,
+                        vocab_extraction_agent,
+                        build_user_prompt(chunk),
+                        feature="vocab_extraction",
+                        model=model,
+                        user_id=user_id,
+                        max_retries=max_retries,
+                    )
+                    all_entries.extend(result.entries)
+                except AIBudgetExceeded as exc:
+                    # No point trying the remaining chunks; keep whatever was extracted so far.
+                    chunk_errors.append(str(exc))
+                    break
+                except AIRunError as exc:  # one bad chunk shouldn't sink the whole job
+                    logger.warning("Chunk %d/%d failed to extract: %s", i + 1, len(chunks), exc)
+                    chunk_errors.append(str(exc))
+
+            if not all_entries and chunk_errors:
+                raise AIRunError("; ".join(chunk_errors[:3]))
+
+            unique_entries = _dedupe_entries(all_entries)
+            job.status = ExtractionStatus.COMPLETED
+            job.raw_ai_output = VocabExtractionAIOutput(entries=unique_entries).model_dump(mode="json")
+            if chunk_errors:
+                job.error_message = (
+                    f"{len(chunk_errors)} of {len(chunks)} chunk(s) failed to extract; "
+                    "showing results from the rest."
                 )
-                all_entries.extend(result.entries)
-            except Exception as chunk_exc:  # noqa: BLE001 - one bad chunk shouldn't sink the whole job
-                message = _describe_error(chunk_exc)
-                logger.warning("Chunk %d/%d failed to extract: %s", i + 1, len(chunks), message)
-                chunk_errors.append(message)
-
-        if not all_entries and chunk_errors:
-            raise AIGenerationError("; ".join(chunk_errors[:3]))
-
-        unique_entries = _dedupe_entries(all_entries)
-        job.status = ExtractionStatus.COMPLETED
-        job.raw_ai_output = VocabExtractionAIOutput(entries=unique_entries).model_dump(mode="json")
-        if chunk_errors:
-            job.error_message = (
-                f"{len(chunk_errors)} of {len(chunks)} chunk(s) failed to extract; "
-                "showing results from the rest."
-            )
-    except (AIGenerationError, ValueError) as exc:
-        job.status = ExtractionStatus.FAILED
-        job.error_message = str(exc)
-    except Exception as exc:  # noqa: BLE001 - any provider/network failure becomes a failed job, not a 500
-        logger.exception("AI vocab extraction failed for job %s", job.id)
-        job.status = ExtractionStatus.FAILED
-        job.error_message = f"AI provider request failed: {_describe_error(exc)}"
+        except (AIRunError, ValueError) as exc:
+            job.status = ExtractionStatus.FAILED
+            job.error_message = str(exc)
+        except Exception as exc:  # noqa: BLE001 - e.g. a corrupt file the parser chokes on
+            logger.exception("Vocab extraction failed for job %s", job.id)
+            job.status = ExtractionStatus.FAILED
+            job.error_message = f"Extraction failed: {exc}"
 
     job.completed_at = datetime.now(timezone.utc)
     db.commit()

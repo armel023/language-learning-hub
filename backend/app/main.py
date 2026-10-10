@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.agents.core.telemetry import configure_telemetry
 from app.config import get_settings
 from app.core.logging import configure_logging
 from app.db.seed import ensure_default_user
@@ -11,6 +12,7 @@ from app.routers import decks, flashcards, health, reading, study, vocab_extract
 
 configure_logging()
 settings = get_settings()
+configure_telemetry(settings)
 
 
 @asynccontextmanager
