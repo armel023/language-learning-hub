@@ -278,3 +278,55 @@ export interface SchreibenAttempt {
 
 /** Same shape as ReadingExerciseDetail for any skill, with a typed `content`. */
 export type ExerciseDetail<TContent> = Omit<ReadingExerciseDetail, "content"> & { content: TContent };
+
+export interface ScriptLine {
+  speaker: string;
+  gender: "female" | "male";
+  text: string;
+}
+
+export interface AudioRef {
+  url: string;
+  duration_s: number;
+}
+
+export interface IconPicture {
+  emoji: string;
+  caption: string;
+}
+
+export interface HoerenTeil1Content {
+  plays: number;
+  items: { item_number: number; context: string; prompt: string; options: string[]; audio: AudioRef }[];
+}
+
+export interface HoerenTeil2Content {
+  plays: number;
+  context: string;
+  audio: AudioRef;
+  beispiel: { label: string; correct_code: string; explanation: string };
+  pictures: (IconPicture & { code: string })[];
+  aufgaben: { aufgabe_number: number; label: string }[];
+}
+
+export interface HoerenTeil3Content {
+  plays: number;
+  items: { item_number: number; context: string; prompt: string; options: IconPicture[]; audio: AudioRef }[];
+}
+
+export interface HoerenTeil4Content {
+  plays: number;
+  context: string;
+  audio: AudioRef;
+  statements: { number: number; statement: string }[];
+}
+
+export interface HoerenVocabEntry extends ExtractedVocabEntry {
+  already_in_cards: boolean;
+}
+
+export interface HoerenAttemptResult extends ReadingAttemptResult {
+  /** Keyed like the questions ("1".."5", "11".."15") or "all" for Teil 2 and 4. */
+  transcripts: Record<string, ScriptLine[]>;
+  vocabulary: HoerenVocabEntry[];
+}

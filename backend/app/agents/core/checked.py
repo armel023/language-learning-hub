@@ -1,4 +1,5 @@
-"""Generate -> check -> revise loop for Lesen exercises (evaluator-optimizer pattern).
+"""Generate -> check -> revise loop for exercises with an objective answer key
+(evaluator-optimizer pattern), shared by Lesen and Hören.
 
 Orchestration is plain code, not an LLM: the generator drafts, the checker solves the draft
 blind, and the code decides whether they agree. Disagreements and blocking issues go back to
@@ -6,15 +7,38 @@ the generator as concrete revision notes, up to `max_revisions` times.
 """
 import json
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel
+from pydantic_ai import Agent
 from sqlalchemy.orm import Session
 
+from app.agents.core.checker import CheckerDeps, CheckerReport, checker_agent
 from app.agents.core.models import ModelHandle
 from app.agents.core.runner import run_agent
-from app.agents.lesen.checker import CheckerDeps, CheckerReport, checker_agent
-from app.agents.lesen.specs import TeilSpec
+
+
+@dataclass(frozen=True)
+class TeilSpec:
+    """Everything that differs between Teile; the flow below is the same for all of them."""
+
+    teil: int
+    generator: Agent
+    build_prompt: Callable[[str | None, str], str]
+    # AI output -> (content shown to the student, answer key with answers + explanations)
+    split: Callable[[BaseModel], tuple[dict, dict]]
+    title: Callable[[BaseModel, str | None], str]
+    # Tells the checker how to write each answer.
+    answer_format: str
+    # The only answers the checker may give, and how an answer-key value maps onto them.
+    # Letters rather than 0-based indexes: small local models tend to count options from 1.
+    allowed_answers: tuple[str, ...]
+    key_to_answer: Callable[[int | str], str]
+    skill: str = "lesen"
+    # What the checker is shown; defaults to the student-visible content. Hören adds the
+    # transcript here, since the checker can't listen to audio.
+    checker_view: Callable[[BaseModel, dict], dict] | None = None
 
 
 @dataclass(frozen=True)
@@ -60,7 +84,7 @@ def generate_checked(
 
     for round_number in range(max_revisions + 1):
         output = run_agent(
-            ctx.db, spec.generator, prompt, feature=f"lesen_teil{spec.teil}",
+            ctx.db, spec.generator, prompt, feature=f"{spec.skill}_teil{spec.teil}",
             model=ctx.model, user_id=ctx.user_id, max_retries=ctx.max_retries,
         )
         content, answer_key = spec.split(output)
@@ -68,8 +92,9 @@ def generate_checked(
             allowed_answers=spec.allowed_answers,
             item_numbers=tuple(int(item) for item in answer_key["answers"]),
         )
+        view = spec.checker_view(output, content) if spec.checker_view else content
         report = run_agent(
-            ctx.db, checker_agent, _checker_prompt(spec, content), feature=f"lesen_teil{spec.teil}_check",
+            ctx.db, checker_agent, _checker_prompt(spec, view), feature=f"{spec.skill}_teil{spec.teil}_check",
             model=ctx.model, user_id=ctx.user_id, max_retries=ctx.max_retries, deps=checker_deps,
         )
         problems = find_problems(spec, answer_key, report)
@@ -117,10 +142,11 @@ def _describe_key(spec: TeilSpec, correct: int | str) -> str:
     return repr(label) if label == str(correct) else f"{label!r} (correct_option_index {correct})"
 
 
-def _checker_prompt(spec: TeilSpec, content: dict) -> str:
+def _checker_prompt(spec: TeilSpec, view: dict) -> str:
+    what = "exactly as the student sees it" if spec.skill == "lesen" else "with the transcript of the audio"
     return (
-        f"Lesen Teil {spec.teil} exercise, exactly as the student sees it:\n"
-        f"{json.dumps(content, ensure_ascii=False, indent=2)}\n\n"
+        f"{spec.skill.capitalize()} Teil {spec.teil} exercise, {what}:\n"
+        f"{json.dumps(view, ensure_ascii=False, indent=2)}\n\n"
         f"How to write each answer: {spec.answer_format}"
     )
 

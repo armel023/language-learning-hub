@@ -1,5 +1,5 @@
 """Lesen exercise generators, one structured-output agent per Teil. The checker that solves each
-draft blind before it is saved lives in app.agents.lesen.checker."""
+draft blind before it is saved lives in app.agents.core.checker."""
 from pydantic_ai import Agent, NativeOutput
 
 from app.agents.prompts import reading_teil1, reading_teil2, reading_teil3, reading_teil4

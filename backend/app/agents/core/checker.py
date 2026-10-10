@@ -1,7 +1,7 @@
-"""Independent checker for generated Lesen exercises.
+"""Independent checker for generated exercises with an answer key (Lesen, Hören).
 
-It sees exactly what the student sees (never the answer key), solves every item, and flags
-problems. The flow compares its answers with the generator's key: a disagreement usually means
+It sees what the student gets (never the answer key; for Hören, the transcript of the audio),
+solves every item, and flags problems. The flow compares its answers with the generator's key: a disagreement usually means
 the item is ambiguous or the key is wrong, which is the failure a learner can't detect.
 """
 from dataclasses import dataclass
@@ -37,11 +37,12 @@ class CheckerReport(BaseModel):
     issues: list[CheckerIssue] = Field(default_factory=list)
 
 
-INSTRUCTIONS = """You are reviewing a Goethe-Zertifikat A2 Lesen exercise before students see it.
+INSTRUCTIONS = """You are reviewing a Goethe-Zertifikat A2 exercise before students see it.
 
 First, solve it exactly as a careful A2 candidate would: use ONLY the information in the
 exercise, decide each item on its own, and do not guess what the author intended. The "Beispiel"
-is already solved for the student; do not answer it.
+is already solved for the student; do not answer it. For a listening (Hören) exercise you get the
+transcript of the audio instead of the audio: answer from what is said in it.
 
 Then report problems you noticed while solving. Mark an issue as blocking only when a student
 who understood the text could still reasonably pick a different answer, or could not find any
@@ -56,7 +57,7 @@ class CheckerDeps:
 
 
 checker_agent = Agent(
-    name="lesen_checker",
+    name="exercise_checker",
     deps_type=CheckerDeps,
     output_type=NativeOutput(CheckerReport),
     instructions=INSTRUCTIONS,

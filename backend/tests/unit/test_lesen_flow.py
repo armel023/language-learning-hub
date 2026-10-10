@@ -7,8 +7,8 @@ from tests.unit.test_ai_outputs import teil1, teil4
 
 from app.agents.core import runner
 from app.agents.core.models import ModelHandle
-from app.agents.lesen.checker import CheckedAnswer, CheckerIssue, CheckerReport, normalize_answer
-from app.agents.lesen.flow import RunContext, UnverifiedExercise, find_problems, generate_checked
+from app.agents.core.checker import CheckedAnswer, CheckerIssue, CheckerReport, normalize_answer
+from app.agents.core.checked import RunContext, UnverifiedExercise, find_problems, generate_checked
 from app.agents.lesen.specs import AD_ANSWERS, OPTION_LETTERS, SPECS
 
 TEIL1_KEY = {str(n): 1 for n in range(1, 6)}  # teil1() marks option index 1 correct everywhere

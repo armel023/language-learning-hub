@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.agents.core import models as agent_models
 from app.agents.core.models import ModelHandle
 from app.agents.core.runner import AIBudgetExceeded, AIRunError
-from app.agents.lesen.flow import RunContext, UnverifiedExercise, generate_checked
+from app.agents.core.checked import RunContext, UnverifiedExercise, generate_checked
 from app.agents.lesen.specs import SPECS
 from app.config import get_settings
 from app.jobs.runner import JobFailed, enqueue, job_handler
@@ -61,8 +61,8 @@ def generate_exercise(
         spec,
         payload.topic,
         payload.level,
-        max_revisions=settings.lesen_max_revisions,
-        require_verification=settings.lesen_require_verification,
+        max_revisions=settings.exercise_max_revisions,
+        require_verification=settings.exercise_require_verification,
     )
     exercise = Exercise(
         skill=Skill.LESEN,

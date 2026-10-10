@@ -1,12 +1,13 @@
 # A2 Deutsch Hub
 
-Personal study app for the Goethe A2 German exam: Flashcards (manual + AI-assisted vocabulary extraction), Lesen (reading practice, Teil 1-4, each exercise checked by an independent AI reviewer) and Schreiben (writing tasks with AI grading and corrections). Hören and Sprechen are coming soon.
+Personal study app for the Goethe A2 German exam: Flashcards (manual + AI-assisted vocabulary extraction), Lesen (reading practice, Teil 1-4, each exercise checked by an independent AI reviewer), Hören (listening practice, Teil 1-4, with generated audio, exam play limits, transcripts and vocabulary) and Schreiben (writing tasks with AI grading and corrections). Sprechen is coming soon.
 
 ## Stack
 
 - Backend: Python + FastAPI, SQLAlchemy + Alembic, PostgreSQL
 - Frontend: React + Vite + TypeScript, MUI, TanStack Query
 - AI: Pydantic AI agents on Gemini (primary) or local Ollama (offline)
+- Speech (Hören): Piper TTS (offline, default; German voices baked into the backend image) or Gemini TTS
 - Monitoring: OpenTelemetry traces to self-hosted Arize Phoenix; per-run token usage in the `ai_runs` table
 - Docker Compose for local dev
 
@@ -52,6 +53,14 @@ into when forced to produce JSON.
 
 (The compose file also has an `ollama` service under the `offline` profile, for machines without a local
 Ollama install. It downloads a ~9 GB image; point `OLLAMA_BASE_URL` at `http://ollama:11434` to use it.)
+
+## Hören audio
+
+Hören exercises are written as scripts, checked from the transcript, and only then turned into audio,
+one voice per speaker. `TTS_PROVIDER=piper` (default) runs offline and needs no key; `TTS_PROVIDER=gemini`
+sounds more natural and uses `GEMINI_API_KEY` (model `GEMINI_TTS_MODEL`). Audio files live in the
+`media_data` volume and are served at `/api/v1/media/...`. Each exercise's TTS time and Gemini TTS tokens
+are recorded in `ai_runs` (feature `hoeren_tts`).
 
 ## Backend dev without Docker
 

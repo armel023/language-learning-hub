@@ -1,4 +1,5 @@
 import { useState, type ComponentType, type ReactNode } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link as RouterLink } from "react-router-dom";
 import {
   Alert,
@@ -15,32 +16,56 @@ import {
 
 import { describeError } from "../api/client";
 import { readingApi } from "../api/reading";
-import { useGenerateReadingExercise, useReadingExercises, useSubmitReadingAttempt } from "../hooks/useReading";
-import type { ReadingAttemptResult, ReadingExerciseDetail, ReadingExerciseGenerateRequest } from "../types/api";
+import type {
+  ReadingAttemptResult,
+  ReadingAttemptSubmit,
+  ReadingExerciseDetail,
+  ReadingExerciseGenerateRequest,
+  ReadingExerciseSummary,
+} from "../types/api";
 
-export interface ExerciseBodyProps<TContent, TAnswer> {
+/** The endpoints a skill with objectively scored Teile provides (Lesen, Hören). */
+export interface ExerciseApi<TResult extends ReadingAttemptResult> {
+  listExercises: (teil: number) => Promise<ReadingExerciseSummary[]>;
+  getExercise: (id: string) => Promise<ReadingExerciseDetail>;
+  generateExercise: (payload: ReadingExerciseGenerateRequest) => Promise<ReadingExerciseDetail>;
+  submitAttempt: (payload: ReadingAttemptSubmit) => Promise<TResult>;
+}
+
+export interface ExerciseBodyProps<TContent, TAnswer, TResult extends ReadingAttemptResult = ReadingAttemptResult> {
   content: TContent;
   answers: Record<string, TAnswer>;
   setAnswer: (key: string, value: TAnswer) => void;
   /** Set once the attempt is submitted; bodies use it to show corrections and lock inputs. */
-  result: ReadingAttemptResult | null;
+  result: TResult | null;
 }
 
-interface ExerciseShellProps<TContent, TAnswer> {
+interface ExerciseShellProps<TContent, TAnswer, TResult extends ReadingAttemptResult> {
   teil: ReadingExerciseGenerateRequest["teil"];
   description: ReactNode;
   topicLabel: string;
   topicPlaceholder: string;
   maxWidth?: number;
   isComplete: (content: TContent, answers: Record<string, TAnswer>) => boolean;
-  Body: ComponentType<ExerciseBodyProps<TContent, TAnswer>>;
+  Body: ComponentType<ExerciseBodyProps<TContent, TAnswer, TResult>>;
+  /** Defaults to Lesen. */
+  api?: ExerciseApi<TResult>;
+  skillLabel?: string;
+  basePath?: string;
+  generatingLabel?: string;
+  /** Extra panel under a submitted exercise, e.g. Hören's vocabulary list. */
+  ResultExtras?: ComponentType<{ result: TResult }>;
 }
 
 /**
- * Everything a Lesen Teil page shares: picking or generating an exercise, the header and score,
- * submitting, and error handling. Each Teil only supplies how its exercise body renders.
+ * Everything a Lesen or Hören Teil page shares: picking or generating an exercise, the header and
+ * score, submitting, and error handling. Each Teil only supplies how its exercise body renders.
  */
-export function ExerciseShell<TContent, TAnswer extends string | number>({
+export function ExerciseShell<
+  TContent,
+  TAnswer extends string | number,
+  TResult extends ReadingAttemptResult = ReadingAttemptResult,
+>({
   teil,
   description,
   topicLabel,
@@ -48,15 +73,23 @@ export function ExerciseShell<TContent, TAnswer extends string | number>({
   maxWidth = 720,
   isComplete,
   Body,
-}: ExerciseShellProps<TContent, TAnswer>) {
-  const { data: previousExercises, isLoading: isLoadingList } = useReadingExercises(teil);
-  const generateExercise = useGenerateReadingExercise();
-  const submitAttempt = useSubmitReadingAttempt();
+  api = readingApi as unknown as ExerciseApi<TResult>,
+  skillLabel = "Lesen",
+  basePath = "/lesen",
+  generatingLabel = "Generating and checking...",
+  ResultExtras,
+}: ExerciseShellProps<TContent, TAnswer, TResult>) {
+  const { data: previousExercises, isLoading: isLoadingList } = useQuery({
+    queryKey: [basePath, "exercises", teil],
+    queryFn: () => api.listExercises(teil),
+  });
+  const generateExercise = useMutation({ mutationFn: api.generateExercise });
+  const submitAttempt = useMutation({ mutationFn: api.submitAttempt });
 
   const [topic, setTopic] = useState("");
   const [exercise, setExercise] = useState<ReadingExerciseDetail | null>(null);
   const [answers, setAnswers] = useState<Record<string, TAnswer>>({});
-  const [result, setResult] = useState<ReadingAttemptResult | null>(null);
+  const [result, setResult] = useState<TResult | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
 
   function startExercise(ex: ReadingExerciseDetail) {
@@ -75,7 +108,7 @@ export function ExerciseShell<TContent, TAnswer extends string | number>({
   async function openPrevious(id: string) {
     setOpenError(null);
     try {
-      startExercise(await readingApi.getExercise(id));
+      startExercise(await api.getExercise(id));
     } catch (error) {
       setOpenError(describeError(error, "Could not open that exercise."));
     }
@@ -90,7 +123,7 @@ export function ExerciseShell<TContent, TAnswer extends string | number>({
     return (
       <Box maxWidth={maxWidth}>
         <Typography variant="h4" gutterBottom>
-          Lesen - Teil {teil}
+          {skillLabel} - Teil {teil}
         </Typography>
         <Typography color="text.secondary" mb={3}>
           {description}
@@ -105,7 +138,7 @@ export function ExerciseShell<TContent, TAnswer extends string | number>({
             size="small"
           />
           <Button variant="contained" onClick={handleGenerate} disabled={generateExercise.isPending}>
-            {generateExercise.isPending ? "Generating and checking..." : "Generate new exercise"}
+            {generateExercise.isPending ? generatingLabel : "Generate new exercise"}
           </Button>
         </Stack>
         {generateExercise.isError && (
@@ -150,8 +183,8 @@ export function ExerciseShell<TContent, TAnswer extends string | number>({
     <Box maxWidth={maxWidth}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1} mb={2}>
         <Typography variant="h4">{exercise.title}</Typography>
-        <Button component={RouterLink} to="/lesen" variant="text">
-          Back to Lesen
+        <Button component={RouterLink} to={basePath} variant="text">
+          Back to {skillLabel}
         </Button>
       </Stack>
 
@@ -167,6 +200,7 @@ export function ExerciseShell<TContent, TAnswer extends string | number>({
         setAnswer={(key, value) => setAnswers((prev) => ({ ...prev, [key]: value }))}
         result={result}
       />
+      {result && ResultExtras && <ResultExtras result={result} />}
 
       <Stack direction="row" spacing={2} mt={3}>
         {!result ? (

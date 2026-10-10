@@ -1,15 +1,6 @@
-"""Per-Teil configuration for Lesen generation.
-
-Each TeilSpec bundles what differs between the four Teile (generator agent, prompt, how the AI
-output splits into student-visible content vs. answer key, how answers are written down), so a
-single flow in app.agents.lesen.flow handles all of them.
-"""
-from collections.abc import Callable
-from dataclasses import dataclass
-
-from pydantic import BaseModel
-from pydantic_ai import Agent
-
+"""Per-Teil configuration for Lesen generation: what differs between the four Teile, so the
+shared generate -> check -> revise flow in app.agents.core.checked handles all of them."""
+from app.agents.core.checked import TeilSpec
 from app.agents.lesen import generators
 from app.agents.prompts import reading_teil1, reading_teil2, reading_teil3, reading_teil4
 from app.schemas.ai_outputs import (
@@ -18,22 +9,6 @@ from app.schemas.ai_outputs import (
     ReadingTeil3AIOutput,
     ReadingTeil4AIOutput,
 )
-
-
-@dataclass(frozen=True)
-class TeilSpec:
-    teil: int
-    generator: Agent
-    build_prompt: Callable[[str | None, str], str]
-    # AI output -> (content shown to the student, answer key with answers + explanations)
-    split: Callable[[BaseModel], tuple[dict, dict]]
-    title: Callable[[BaseModel, str | None], str]
-    # Tells the checker how to write each answer.
-    answer_format: str
-    # The only answers the checker may give, and how an answer-key value maps onto them.
-    # Letters rather than 0-based indexes: small local models tend to count options from 1.
-    allowed_answers: tuple[str, ...]
-    key_to_answer: Callable[[int | str], str]
 
 
 def _split_teil1_output(ai_output: ReadingTeil1AIOutput) -> tuple[dict, dict]:
