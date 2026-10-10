@@ -96,7 +96,7 @@ export function ExerciseShell<TContent, TAnswer extends string | number>({
           {description}
         </Typography>
 
-        <Stack direction="row" spacing={2} mb={4} alignItems="flex-start">
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2} mb={4} alignItems={{ xs: "stretch", sm: "flex-start" }}>
           <TextField
             label={topicLabel}
             placeholder={topicPlaceholder}
@@ -148,7 +148,7 @@ export function ExerciseShell<TContent, TAnswer extends string | number>({
 
   return (
     <Box maxWidth={maxWidth}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1} mb={2}>
         <Typography variant="h4">{exercise.title}</Typography>
         <Button component={RouterLink} to="/lesen" variant="text">
           Back to Lesen

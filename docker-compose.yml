@@ -6,7 +6,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
       POSTGRES_DB: ${POSTGRES_DB:-language_learning_hub}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Host-only: reachable by local tools, not from the LAN/Tailscale.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -24,14 +25,19 @@ services:
       AI_DAILY_TOKEN_BUDGET: ${AI_DAILY_TOKEN_BUDGET:-1000000}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-lite-latest}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma2:9b}
+      # Default: Ollama installed on the host. Use http://ollama:11434 with the "offline" profile instead.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma3:4b}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-10485760}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://phoenix:6006/v1/traces}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-a2-deutsch-hub-backend}
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      # Host-only: other devices reach the API through the frontend's /api proxy.
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    extra_hosts:
+      # Lets the container reach services on the host (e.g. Ollama) on Linux too; built in on Docker Desktop.
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -47,8 +53,9 @@ services:
     build:
       context: ./frontend
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000/api/v1}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
     ports:
+      # All interfaces, so phones/laptops on the tailnet can open http://<this-pc-tailscale-ip>:5173
       - "${FRONTEND_PORT:-5173}:80"
     depends_on:
       - backend

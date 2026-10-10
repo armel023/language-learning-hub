@@ -7,6 +7,7 @@ from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.providers.google import GoogleProvider
 from pydantic_ai.providers.ollama import OllamaProvider
+from pydantic_ai.settings import ModelSettings
 
 from app.config import Settings, get_settings
 
@@ -28,7 +29,15 @@ def build_model(settings: Settings) -> ModelHandle:
         base_url = settings.ollama_base_url.rstrip("/")
         if not base_url.endswith("/v1"):
             base_url = f"{base_url}/v1"
-        model = OllamaModel(settings.ollama_model, provider=OllamaProvider(base_url=base_url))
+        model = OllamaModel(
+            settings.ollama_model,
+            provider=OllamaProvider(base_url=base_url),
+            settings=ModelSettings(
+                max_tokens=settings.ollama_max_tokens,
+                temperature=settings.ollama_temperature,
+                frequency_penalty=settings.ollama_frequency_penalty,
+            ),
+        )
         return ModelHandle(model=model, provider="ollama", model_name=settings.ollama_model)
 
     if not settings.gemini_api_key:

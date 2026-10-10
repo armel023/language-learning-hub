@@ -20,9 +20,17 @@ export function App() {
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
-      <AppBar position="static" color="primary">
-        <Toolbar>
-          <Typography variant="h6" sx={{ mr: 4 }}>
+      <AppBar position="sticky" color="primary">
+        {/* Phones: title on its own row, tabs below and horizontally scrollable. Desktop: one row. */}
+        <Toolbar
+          sx={{
+            flexDirection: { xs: "column", md: "row" },
+            alignItems: { xs: "stretch", md: "center" },
+            px: { xs: 0, md: 3 },
+            minHeight: { xs: "auto", md: 64 },
+          }}
+        >
+          <Typography variant="h6" noWrap sx={{ mr: { md: 4 }, px: { xs: 2, md: 0 }, pt: { xs: 1, md: 0 } }}>
             A2 Deutsch Hub
           </Typography>
           <Tabs
@@ -30,6 +38,9 @@ export function App() {
             onChange={(_, value: string) => navigate(value)}
             textColor="inherit"
             indicatorColor="secondary"
+            variant="scrollable"
+            scrollButtons={false}
+            sx={{ minHeight: { xs: 44, md: 64 }, "& .MuiTab-root": { minHeight: { xs: 44, md: 64 }, minWidth: 0, px: 2 } }}
           >
             {NAV_ITEMS.map((item) => (
               <Tab key={item.path} label={item.label} value={item.path} />
@@ -37,7 +48,7 @@ export function App() {
           </Tabs>
         </Toolbar>
       </AppBar>
-      <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Container maxWidth="lg" sx={{ py: { xs: 2, sm: 4 }, px: { xs: 1.5, sm: 3 } }}>
         <Outlet />
       </Container>
     </Box>

@@ -20,6 +20,7 @@ import {
   Paper,
 } from "@mui/material";
 
+import { describeError } from "../../api/client";
 import { useConfirmExtraction, useUploadFile } from "../../hooks/useVocabExtraction";
 import type { ExtractedVocabCandidate, VocabExtractionJob } from "../../types/api";
 
@@ -81,7 +82,11 @@ export function FlashcardUploadPage() {
           <Typography>Uploading and extracting vocabulary... this can take a minute for large files.</Typography>
         </Stack>
       )}
-      {uploadFile.isError && <Alert severity="error" sx={{ mt: 2 }}>Upload failed. Please try again.</Alert>}
+      {uploadFile.isError && (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {describeError(uploadFile.error, "Upload failed. Please try again.")}
+        </Alert>
+      )}
 
       {job?.status === "failed" && (
         <Alert severity="error" sx={{ mt: 2 }}>

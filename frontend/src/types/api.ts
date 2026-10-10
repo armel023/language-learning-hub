@@ -231,3 +231,50 @@ export interface DeckCreate {
   name: string;
   description?: string | null;
 }
+
+export interface SchreibenContent {
+  title: string;
+  situation: string;
+  recipient: string;
+  formality: "informal" | "formal";
+  content_points: string[];
+  word_range: [number, number];
+  max_score: number;
+}
+
+export interface SchreibenGenerateRequest {
+  teil: 1 | 2;
+  topic?: string;
+  level?: string;
+}
+
+export interface SchreibenCriterion {
+  score: number;
+  comment: string;
+}
+
+export interface SchreibenAttempt {
+  id: string;
+  exercise_id: string;
+  status: "submitted" | "grading" | "graded" | "failed";
+  response_text: string | null;
+  score: number | null;
+  max_score: number;
+  rubric_scores: {
+    content_points: (SchreibenCriterion & { point_number: number })[];
+    communication: SchreibenCriterion;
+    accuracy: SchreibenCriterion;
+  } | null;
+  feedback: {
+    summary?: string;
+    corrections?: { original: string; corrected: string; explanation: string }[];
+    improved_version?: string;
+    word_count?: number;
+    word_range?: [number, number];
+    error?: string;
+  } | null;
+  submitted_at: string | null;
+}
+
+/** Same shape as ReadingExerciseDetail for any skill, with a typed `content`. */
+export type ExerciseDetail<TContent> = Omit<ReadingExerciseDetail, "content"> & { content: TContent };

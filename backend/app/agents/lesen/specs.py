@@ -28,8 +28,12 @@ class TeilSpec:
     # AI output -> (content shown to the student, answer key with answers + explanations)
     split: Callable[[BaseModel], tuple[dict, dict]]
     title: Callable[[BaseModel, str | None], str]
-    # Tells the checker how to write each answer, matching the answer key's format.
+    # Tells the checker how to write each answer.
     answer_format: str
+    # The only answers the checker may give, and how an answer-key value maps onto them.
+    # Letters rather than 0-based indexes: small local models tend to count options from 1.
+    allowed_answers: tuple[str, ...]
+    key_to_answer: Callable[[int | str], str]
 
 
 def _split_teil1_output(ai_output: ReadingTeil1AIOutput) -> tuple[dict, dict]:
@@ -126,9 +130,17 @@ def _split_teil3_output(ai_output: ReadingTeil3AIOutput) -> tuple[dict, dict]:
     return content, answer_key
 
 
-_OPTION_INDEX = (
-    "the 0-based index of the correct option as a string: \"0\", \"1\" or \"2\""
+OPTION_LETTERS = ("A", "B", "C")
+AD_ANSWERS = ("a", "b", "c", "d", "e", "f", "X")
+
+_OPTION_LETTER = (
+    'the letter of the correct option: "A" for the first option, "B" for the second, "C" for the third'
 )
+
+
+def _index_to_letter(index: int | str) -> str:
+    return OPTION_LETTERS[int(index)]
+
 
 SPECS: dict[int, TeilSpec] = {
     1: TeilSpec(
@@ -137,7 +149,9 @@ SPECS: dict[int, TeilSpec] = {
         build_prompt=reading_teil1.build_user_prompt,
         split=_split_teil1_output,
         title=lambda out, topic: out.article_title,
-        answer_format=f"For each question_number, {_OPTION_INDEX}.",
+        answer_format=f"For each question_number, {_OPTION_LETTER}.",
+        allowed_answers=OPTION_LETTERS,
+        key_to_answer=_index_to_letter,
     ),
     2: TeilSpec(
         teil=2,
@@ -146,9 +160,11 @@ SPECS: dict[int, TeilSpec] = {
         split=_split_teil2_output,
         title=lambda out, topic: f"Im Kaufhaus: {topic}" if topic else "Im Kaufhaus",
         answer_format=(
-            f"For each aufgabe_number, {_OPTION_INDEX}. The third option (\"Anderer Stock\") "
+            f"For each aufgabe_number, {_OPTION_LETTER}. The third option (\"Anderer Stock\") "
             "means the item is on a floor other than the two offered."
         ),
+        allowed_answers=OPTION_LETTERS,
+        key_to_answer=_index_to_letter,
     ),
     3: TeilSpec(
         teil=3,
@@ -156,7 +172,9 @@ SPECS: dict[int, TeilSpec] = {
         build_prompt=reading_teil3.build_user_prompt,
         split=_split_teil3_output,
         title=lambda out, topic: out.email_subject,
-        answer_format=f"For each question_number, {_OPTION_INDEX}.",
+        answer_format=f"For each question_number, {_OPTION_LETTER}.",
+        allowed_answers=OPTION_LETTERS,
+        key_to_answer=_index_to_letter,
     ),
     4: TeilSpec(
         teil=4,
@@ -168,5 +186,7 @@ SPECS: dict[int, TeilSpec] = {
             "For each aufgabe_number, the code of the matching advertisement (\"a\"-\"f\"), "
             "or \"X\" if no advertisement satisfies every detail of the Aufgabe."
         ),
+        allowed_answers=AD_ANSWERS,
+        key_to_answer=str,
     ),
 }

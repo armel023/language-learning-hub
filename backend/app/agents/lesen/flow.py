@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.agents.core.models import ModelHandle
 from app.agents.core.runner import run_agent
-from app.agents.lesen.checker import CheckerReport, checker_agent
+from app.agents.lesen.checker import CheckerDeps, CheckerReport, checker_agent
 from app.agents.lesen.specs import TeilSpec
 
 
@@ -64,11 +64,15 @@ def generate_checked(
             model=ctx.model, user_id=ctx.user_id, max_retries=ctx.max_retries,
         )
         content, answer_key = spec.split(output)
+        checker_deps = CheckerDeps(
+            allowed_answers=spec.allowed_answers,
+            item_numbers=tuple(int(item) for item in answer_key["answers"]),
+        )
         report = run_agent(
             ctx.db, checker_agent, _checker_prompt(spec, content), feature=f"lesen_teil{spec.teil}_check",
-            model=ctx.model, user_id=ctx.user_id, max_retries=ctx.max_retries,
+            model=ctx.model, user_id=ctx.user_id, max_retries=ctx.max_retries, deps=checker_deps,
         )
-        problems = find_problems(answer_key, report)
+        problems = find_problems(spec, answer_key, report)
         rounds.append({"round": round_number, "problems": problems})
         result = GenerationResult(output, content, answer_key, verified=not problems, rounds=rounds)
         if result.verified:
@@ -80,8 +84,12 @@ def generate_checked(
     return result
 
 
-def find_problems(answer_key: dict, report: CheckerReport) -> list[str]:
-    """Human-readable problems: answer mismatches between key and checker, plus blocking issues."""
+def find_problems(spec: TeilSpec, answer_key: dict, report: CheckerReport) -> list[str]:
+    """Human-readable problems: answer mismatches between key and checker, plus blocking issues.
+
+    The checker's answers are already canonical (its output validator enforces the allowed set);
+    the key is converted into the same vocabulary before comparing.
+    """
     expected: dict[str, int | str] = answer_key["answers"]
     given = {str(a.item_number): a for a in report.answers}
     problems: list[str] = []
@@ -90,10 +98,10 @@ def find_problems(answer_key: dict, report: CheckerReport) -> list[str]:
         checked = given.get(item)
         if checked is None:
             problems.append(f"Item {item}: the reviewer could not answer it.")
-        elif _normalize(checked.answer) != _normalize(correct):
+        elif checked.answer != spec.key_to_answer(correct):
             problems.append(
-                f"Item {item}: answer key says {correct!r}, but an independent reviewer chose "
-                f"{checked.answer!r} because: {checked.reason}"
+                f"Item {item}: answer key says {_describe_key(spec, correct)}, but an independent "
+                f"reviewer chose {checked.answer!r} because: {checked.reason}"
             )
 
     for issue in report.issues:
@@ -103,10 +111,10 @@ def find_problems(answer_key: dict, report: CheckerReport) -> list[str]:
     return problems
 
 
-def _normalize(answer: int | str) -> str:
-    text = str(answer).strip().strip('"').strip("'")
-    # Teil 4 ad codes are lowercase letters, "X" means no match; option indexes are digits.
-    return "X" if text.upper() == "X" else text.lower()
+def _describe_key(spec: TeilSpec, correct: int | str) -> str:
+    label = spec.key_to_answer(correct)
+    # Name both forms so the generator can relate the note to its own correct_option_index.
+    return repr(label) if label == str(correct) else f"{label!r} (correct_option_index {correct})"
 
 
 def _checker_prompt(spec: TeilSpec, content: dict) -> str:

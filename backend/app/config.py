@@ -23,7 +23,13 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-flash-lite-latest"
 
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "gemma2:9b"
+    ollama_model: str = "gemma3:4b"
+    # Small local models under JSON-schema constrained decoding can fall into repetition loops.
+    # A repetition penalty avoids most of them; the token cap makes the rest fail in minutes,
+    # not after the model hits Ollama's own repeat limit. 2048 fits a full Lesen exercise.
+    ollama_max_tokens: int = 2048
+    ollama_temperature: float = 0.7
+    ollama_frequency_penalty: float = 0.3
 
     cors_origins: str = "http://localhost:5173"
 

@@ -95,3 +95,15 @@ def existing_word_keys(
         tuple_(word_key, VocabularyItem.part_of_speech).in_(list(keys)),
     )
     return {(word, pos) for word, pos in db.execute(stmt).all()}
+
+
+def list_weak_words(db: Session, user_id: uuid.UUID, limit: int = 10) -> list[str]:
+    """The user's most-missed flashcard words, most-missed first."""
+    misses = VocabularyItem.incorrect_hard_count + VocabularyItem.incorrect_moderate_count
+    stmt = (
+        select(VocabularyItem.word)
+        .where(VocabularyItem.user_id == user_id, misses > 0)
+        .order_by(misses.desc(), VocabularyItem.last_reviewed_at.desc().nulls_last())
+        .limit(limit)
+    )
+    return list(db.scalars(stmt).all())

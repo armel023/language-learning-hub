@@ -111,7 +111,7 @@ function Teil4Body({ content, answers, setAnswer, result }: ExerciseBodyProps<Re
                     value={answers[aKey] ?? ""}
                     disabled={!!result}
                     onChange={(e) => setAnswer(aKey, e.target.value)}
-                    sx={{ minWidth: 220 }}
+                    sx={{ minWidth: 220, width: { xs: "100%", sm: "auto" } }}
                   >
                     <MenuItem value="" disabled>
                       Wählen...

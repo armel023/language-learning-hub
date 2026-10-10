@@ -11,6 +11,8 @@ import { Teil1Page } from "./lesen/Teil1Page";
 import { Teil2Page } from "./lesen/Teil2Page";
 import { Teil3Page } from "./lesen/Teil3Page";
 import { Teil4Page } from "./lesen/Teil4Page";
+import { SchreibenHomePage } from "./schreiben/SchreibenHomePage";
+import { SchreibenTeilPage } from "./schreiben/SchreibenTeilPage";
 
 export const router = createBrowserRouter([
   {
@@ -28,7 +30,9 @@ export const router = createBrowserRouter([
       { path: "lesen/teil3", element: <Teil3Page /> },
       { path: "lesen/teil4", element: <Teil4Page /> },
       { path: "hoeren", element: <ComingSoonPage skill="Hören" /> },
-      { path: "schreiben", element: <ComingSoonPage skill="Schreiben" /> },
+      { path: "schreiben", element: <SchreibenHomePage /> },
+      { path: "schreiben/teil1", element: <SchreibenTeilPage key="teil1" teil={1} /> },
+      { path: "schreiben/teil2", element: <SchreibenTeilPage key="teil2" teil={2} /> },
       { path: "sprechen", element: <ComingSoonPage skill="Sprechen" /> },
     ],
   },
