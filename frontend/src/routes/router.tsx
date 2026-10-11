@@ -1,7 +1,6 @@
 import { createBrowserRouter } from "react-router-dom";
 
 import { App } from "../App";
-import { ComingSoonPage } from "./ComingSoonPage";
 import { FlashcardAddPage } from "./flashcards/FlashcardAddPage";
 import { FlashcardListPage } from "./flashcards/FlashcardListPage";
 import { FlashcardStudyPage } from "./flashcards/FlashcardStudyPage";
@@ -17,6 +16,8 @@ import { HoerenTeil2Page } from "./hoeren/HoerenTeil2Page";
 import { HoerenTeil3Page } from "./hoeren/HoerenTeil3Page";
 import { HoerenTeil4Page } from "./hoeren/HoerenTeil4Page";
 import { SchreibenHomePage } from "./schreiben/SchreibenHomePage";
+import { SprechenHomePage } from "./sprechen/SprechenHomePage";
+import { SprechenTeilPage } from "./sprechen/SprechenTeilPage";
 import { SchreibenTeilPage } from "./schreiben/SchreibenTeilPage";
 
 export const router = createBrowserRouter([
@@ -42,7 +43,10 @@ export const router = createBrowserRouter([
       { path: "schreiben", element: <SchreibenHomePage /> },
       { path: "schreiben/teil1", element: <SchreibenTeilPage key="teil1" teil={1} /> },
       { path: "schreiben/teil2", element: <SchreibenTeilPage key="teil2" teil={2} /> },
-      { path: "sprechen", element: <ComingSoonPage skill="Sprechen" /> },
+      { path: "sprechen", element: <SprechenHomePage /> },
+      { path: "sprechen/teil1", element: <SprechenTeilPage key="teil1" teil={1} /> },
+      { path: "sprechen/teil2", element: <SprechenTeilPage key="teil2" teil={2} /> },
+      { path: "sprechen/teil3", element: <SprechenTeilPage key="teil3" teil={3} /> },
     ],
   },
 ]);

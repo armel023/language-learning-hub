@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     gemini_tts_model: str = "gemini-3.8-flash-lite-tts"
     gemini_tts_female_voices: str = "Kore,Leda"
     gemini_tts_male_voices: str = "Puck,Charon"
+    # Sprechen: the live partner runs on Gemini Live (native audio). One voice per partner gender.
+    gemini_live_model: str = "gemini-2.5-flash-native-audio-latest"
+    gemini_live_female_voice: str = "Kore"
+    gemini_live_male_voice: str = "Puck"
+    sprechen_max_session_seconds: int = 480
+
     # Generated media (Hören audio) lives here and is served under /api/v1/media.
     media_dir: str = "/data/media"
 

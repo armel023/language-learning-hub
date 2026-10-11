@@ -330,3 +330,50 @@ export interface HoerenAttemptResult extends ReadingAttemptResult {
   transcripts: Record<string, ScriptLine[]>;
   vocabulary: HoerenVocabEntry[];
 }
+
+export interface CalendarEntry {
+  start: number;
+  end: number;
+  text: string;
+}
+
+export type SprechenContent =
+  | { heading: string; cards: string[] } // Teil 1
+  | { heading: string; question: string; prompts: string[] } // Teil 2
+  | { variant: "termin"; situation: string; day: string; calendar: CalendarEntry[] } // Teil 3
+  | { variant: "planen"; situation: string; center: string; points: string[] }; // Teil 3
+
+export interface SprechenGenerateRequest {
+  teil: 1 | 2 | 3;
+  topic?: string;
+  variant?: "termin" | "planen";
+}
+
+export interface TranscriptTurn {
+  role: "candidate" | "partner";
+  text: string;
+}
+
+export interface SprechenAttempt {
+  id: string;
+  exercise_id: string;
+  status: "submitted" | "grading" | "graded" | "failed";
+  score: number | null;
+  max_score: number;
+  transcript: TranscriptTurn[] | null;
+  rubric_scores: {
+    checklist: { item: string; done: boolean; comment: string }[];
+    task: number;
+    task_max: number;
+    interaction: { score: number; comment: string };
+    accuracy: { score: number; comment: string };
+  } | null;
+  feedback: {
+    summary?: string;
+    corrections?: { original: string; corrected: string; explanation: string }[];
+    better_phrases?: string[];
+    duration_s?: number;
+    error?: string;
+  } | null;
+  submitted_at: string | null;
+}
