@@ -78,11 +78,16 @@ export function FlashcardStudyPage() {
           </Alert>
         )}
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 3, gap: 1 }}>
+      {/* Phones: full-width buttons stacked, the default direction on top. */}
+      <DialogActions
+        disableSpacing
+        sx={{ px: 3, pb: 3, gap: 1, flexDirection: { xs: "column-reverse", sm: "row" }, alignItems: "stretch" }}
+      >
         <Button
           variant="outlined"
           onClick={() => handleStart("en_de")}
           disabled={startSession.isPending}
+          sx={{ width: { xs: "100%", sm: "auto" } }}
         >
           Reverse (English → German)
         </Button>
@@ -90,6 +95,7 @@ export function FlashcardStudyPage() {
           variant="contained"
           onClick={() => handleStart("de_en")}
           disabled={startSession.isPending}
+          sx={{ width: { xs: "100%", sm: "auto" } }}
         >
           Default (German → English)
         </Button>
@@ -119,12 +125,12 @@ export function FlashcardStudyPage() {
         <Typography variant="h4" mb={2}>
           Session complete
         </Typography>
-        <Stack direction="row" spacing={1} mb={3}>
+        <Stack direction="row" spacing={1} mb={3} flexWrap="wrap" useFlexGap>
           <Chip color="success" label={`Correct: ${tally.correct}`} />
           <Chip color="error" label={`Hard: ${tally.incorrect_hard}`} />
           <Chip color="warning" label={`Moderate: ${tally.incorrect_moderate}`} />
         </Stack>
-        <Stack direction="row" spacing={2}>
+        <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
           <Button variant="contained" onClick={() => setPhase("intro")}>
             Study again
           </Button>
@@ -143,7 +149,7 @@ export function FlashcardStudyPage() {
 
   return (
     <Box maxWidth={520}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1} mb={1}>
         <Typography variant="h6">
           Word {currentIndex + 1} of {words.length}
         </Typography>
@@ -156,7 +162,7 @@ export function FlashcardStudyPage() {
       <LinearProgress variant="determinate" value={(currentIndex / words.length) * 100} sx={{ mb: 3 }} />
 
       <Card variant="outlined" sx={{ mb: 3 }}>
-        <CardContent sx={{ textAlign: "center", py: 5 }}>
+        <CardContent sx={{ textAlign: "center", py: { xs: 3, sm: 5 }, overflowWrap: "anywhere" }}>
           <Typography variant="h4" gutterBottom>
             {promptText}
           </Typography>
@@ -186,7 +192,7 @@ export function FlashcardStudyPage() {
       </Card>
 
       {revealed && (
-        <Stack direction="row" spacing={2} justifyContent="center">
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={{ xs: 1, sm: 2 }} justifyContent="center">
           <Button variant="contained" color="success" onClick={() => handleAnswer("correct")}>
             Correct
           </Button>

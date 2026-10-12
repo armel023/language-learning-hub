@@ -1,9 +1,9 @@
 from sqlalchemy.orm import Session
 
-from app.models import ReadingAttempt
+from app.models import Attempt
 
 
-def create_attempt(db: Session, attempt: ReadingAttempt) -> ReadingAttempt:
+def create_attempt(db: Session, attempt: Attempt) -> Attempt:
     db.add(attempt)
     db.commit()
     db.refresh(attempt)

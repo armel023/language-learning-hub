@@ -54,6 +54,11 @@ export interface ExtractedVocabEntry {
   example_sentence_translation: string | null;
 }
 
+export interface ExtractedVocabCandidate extends ExtractedVocabEntry {
+  /** Set by the backend when the user already has a card for this word + part of speech. */
+  already_in_cards?: boolean;
+}
+
 export type ExtractionStatus = "pending" | "processing" | "completed" | "failed";
 export type VocabFileType = "pdf" | "docx" | "txt";
 
@@ -62,10 +67,25 @@ export interface VocabExtractionJob {
   original_filename: string;
   file_type: VocabFileType;
   status: ExtractionStatus;
-  raw_ai_output: { entries: ExtractedVocabEntry[] } | null;
+  raw_ai_output: { entries: ExtractedVocabCandidate[] } | null;
   error_message: string | null;
   created_at: string;
   completed_at: string | null;
+  confirmed_at: string | null;
+}
+
+export type JobStatus = "pending" | "running" | "succeeded" | "failed";
+
+export interface Job {
+  id: string;
+  kind: string;
+  status: JobStatus;
+  result: Record<string, unknown> | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
 }
 
 export type StudyOutcome = "correct" | "incorrect_hard" | "incorrect_moderate";
@@ -210,4 +230,150 @@ export interface Deck {
 export interface DeckCreate {
   name: string;
   description?: string | null;
+}
+
+export interface SchreibenContent {
+  title: string;
+  situation: string;
+  recipient: string;
+  formality: "informal" | "formal";
+  content_points: string[];
+  word_range: [number, number];
+  max_score: number;
+}
+
+export interface SchreibenGenerateRequest {
+  teil: 1 | 2;
+  topic?: string;
+  level?: string;
+}
+
+export interface SchreibenCriterion {
+  score: number;
+  comment: string;
+}
+
+export interface SchreibenAttempt {
+  id: string;
+  exercise_id: string;
+  status: "submitted" | "grading" | "graded" | "failed";
+  response_text: string | null;
+  score: number | null;
+  max_score: number;
+  rubric_scores: {
+    content_points: (SchreibenCriterion & { point_number: number })[];
+    communication: SchreibenCriterion;
+    accuracy: SchreibenCriterion;
+  } | null;
+  feedback: {
+    summary?: string;
+    corrections?: { original: string; corrected: string; explanation: string }[];
+    improved_version?: string;
+    word_count?: number;
+    word_range?: [number, number];
+    error?: string;
+  } | null;
+  submitted_at: string | null;
+}
+
+/** Same shape as ReadingExerciseDetail for any skill, with a typed `content`. */
+export type ExerciseDetail<TContent> = Omit<ReadingExerciseDetail, "content"> & { content: TContent };
+
+export interface ScriptLine {
+  speaker: string;
+  gender: "female" | "male";
+  text: string;
+}
+
+export interface AudioRef {
+  url: string;
+  duration_s: number;
+}
+
+export interface IconPicture {
+  emoji: string;
+  caption: string;
+}
+
+export interface HoerenTeil1Content {
+  plays: number;
+  items: { item_number: number; context: string; prompt: string; options: string[]; audio: AudioRef }[];
+}
+
+export interface HoerenTeil2Content {
+  plays: number;
+  context: string;
+  audio: AudioRef;
+  beispiel: { label: string; correct_code: string; explanation: string };
+  pictures: (IconPicture & { code: string })[];
+  aufgaben: { aufgabe_number: number; label: string }[];
+}
+
+export interface HoerenTeil3Content {
+  plays: number;
+  items: { item_number: number; context: string; prompt: string; options: IconPicture[]; audio: AudioRef }[];
+}
+
+export interface HoerenTeil4Content {
+  plays: number;
+  context: string;
+  audio: AudioRef;
+  statements: { number: number; statement: string }[];
+}
+
+export interface HoerenVocabEntry extends ExtractedVocabEntry {
+  already_in_cards: boolean;
+}
+
+export interface HoerenAttemptResult extends ReadingAttemptResult {
+  /** Keyed like the questions ("1".."5", "11".."15") or "all" for Teil 2 and 4. */
+  transcripts: Record<string, ScriptLine[]>;
+  vocabulary: HoerenVocabEntry[];
+}
+
+export interface CalendarEntry {
+  start: number;
+  end: number;
+  text: string;
+}
+
+export type SprechenContent =
+  | { heading: string; cards: string[] } // Teil 1
+  | { heading: string; question: string; prompts: string[] } // Teil 2
+  | { variant: "termin"; situation: string; day: string; calendar: CalendarEntry[] } // Teil 3
+  | { variant: "planen"; situation: string; center: string; points: string[] }; // Teil 3
+
+export interface SprechenGenerateRequest {
+  teil: 1 | 2 | 3;
+  topic?: string;
+  variant?: "termin" | "planen";
+}
+
+export interface TranscriptTurn {
+  role: "candidate" | "partner";
+  text: string;
+}
+
+export interface SprechenAttempt {
+  id: string;
+  exercise_id: string;
+  status: "submitted" | "grading" | "graded" | "failed";
+  score: number | null;
+  max_score: number;
+  transcript: TranscriptTurn[] | null;
+  rubric_scores: {
+    checklist: { item: string; done: boolean; comment: string }[];
+    task: number;
+    task_max: number;
+    interaction: { score: number; comment: string };
+    accuracy: { score: number; comment: string };
+  } | null;
+  feedback: {
+    summary?: string;
+    corrections?: { original: string; corrected: string; explanation: string }[];
+    better_phrases?: string[];
+    duration_s?: number;
+    error?: string;
+  } | null;
+  submitted_at: string | null;
 }

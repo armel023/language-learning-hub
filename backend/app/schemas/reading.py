@@ -4,14 +4,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.reading_exercise import ExerciseType
-
 
 class ReadingExerciseSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    exercise_type: ExerciseType
+    exercise_type: str
     title: str
     level: str
     topic: str | None
@@ -22,7 +20,7 @@ class ReadingExerciseDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    exercise_type: ExerciseType
+    exercise_type: str
     title: str
     level: str
     topic: str | None

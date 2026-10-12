@@ -1,9 +1,9 @@
 import uuid
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, tuple_
 from sqlalchemy.orm import Session
 
-from app.models import VocabularyItem
+from app.models import PartOfSpeech, VocabularyItem
 
 
 def list_vocabulary(
@@ -19,7 +19,7 @@ def list_vocabulary(
     if deck_id is not None:
         stmt = stmt.where(VocabularyItem.deck_id == deck_id)
     if tag is not None:
-        stmt = stmt.join(VocabularyItem.tags).where(VocabularyItem.tags.any(name=tag))
+        stmt = stmt.where(VocabularyItem.tags.any(name=tag))
     if search:
         pattern = f"%{search}%"
         stmt = stmt.where(
@@ -80,4 +80,30 @@ def list_fillable_vocabulary(
     )
     if exclude_ids:
         stmt = stmt.where(VocabularyItem.id.notin_(exclude_ids))
+    return list(db.scalars(stmt).all())
+
+
+def existing_word_keys(
+    db: Session, user_id: uuid.UUID, keys: set[tuple[str, PartOfSpeech]]
+) -> set[tuple[str, PartOfSpeech]]:
+    """Which (lowercased word, part of speech) pairs the user already has as cards."""
+    if not keys:
+        return set()
+    word_key = func.lower(func.trim(VocabularyItem.word))
+    stmt = select(word_key, VocabularyItem.part_of_speech).where(
+        VocabularyItem.user_id == user_id,
+        tuple_(word_key, VocabularyItem.part_of_speech).in_(list(keys)),
+    )
+    return {(word, pos) for word, pos in db.execute(stmt).all()}
+
+
+def list_weak_words(db: Session, user_id: uuid.UUID, limit: int = 10) -> list[str]:
+    """The user's most-missed flashcard words, most-missed first."""
+    misses = VocabularyItem.incorrect_hard_count + VocabularyItem.incorrect_moderate_count
+    stmt = (
+        select(VocabularyItem.word)
+        .where(VocabularyItem.user_id == user_id, misses > 0)
+        .order_by(misses.desc(), VocabularyItem.last_reviewed_at.desc().nulls_last())
+        .limit(limit)
+    )
     return list(db.scalars(stmt).all())

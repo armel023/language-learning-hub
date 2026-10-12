@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models import VocabSource, VocabularyItem
 from app.repositories import vocabulary_repo
 from app.schemas.vocabulary import VocabularyItemCreate, VocabularyItemUpdate
+from app.services import deck_service
 
 
 def list_vocabulary(
@@ -30,6 +31,8 @@ def get_vocabulary_or_404(db: Session, user_id: uuid.UUID, item_id: uuid.UUID) -
 def create_vocabulary(
     db: Session, user_id: uuid.UUID, payload: VocabularyItemCreate
 ) -> VocabularyItem:
+    if payload.deck_id is not None:
+        deck_service.get_deck_or_404(db, user_id, payload.deck_id)
     item = VocabularyItem(
         user_id=user_id,
         source=VocabSource.MANUAL,
@@ -43,6 +46,8 @@ def update_vocabulary(
 ) -> VocabularyItem:
     item = get_vocabulary_or_404(db, user_id, item_id)
     fields = payload.model_dump(exclude_unset=True)
+    if fields.get("deck_id") is not None:
+        deck_service.get_deck_or_404(db, user_id, fields["deck_id"])
     return vocabulary_repo.update_vocabulary(db, item, fields)
 
 

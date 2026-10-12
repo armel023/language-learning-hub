@@ -29,6 +29,9 @@ const cellTextSx = {
   textOverflow: "ellipsis",
 } as const;
 
+// Type and Progress columns don't fit on a phone; word + translation are what matter there.
+const hideOnPhone = { display: { xs: "none", sm: "table-cell" } };
+
 export function FlashcardListPage() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -54,7 +57,7 @@ export function FlashcardListPage() {
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={3}>
         <Typography variant="h4">Flashcards</Typography>
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
           <Button
             component={RouterLink}
             to="/flashcards/study"
@@ -97,9 +100,9 @@ export function FlashcardListPage() {
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ width: "22%" }}>Word</TableCell>
-                  <TableCell sx={{ width: "12%" }}>Type</TableCell>
+                  <TableCell sx={{ width: "12%", ...hideOnPhone }}>Type</TableCell>
                   <TableCell sx={{ width: "26%" }}>Translation</TableCell>
-                  <TableCell sx={{ width: "30%" }}>Progress</TableCell>
+                  <TableCell sx={{ width: "30%", ...hideOnPhone }}>Progress</TableCell>
                   <TableCell sx={{ width: "10%" }} align="right" />
                 </TableRow>
               </TableHead>
@@ -110,11 +113,11 @@ export function FlashcardListPage() {
                       {item.article ? `${item.article} ` : ""}
                       {item.word}
                     </TableCell>
-                    <TableCell sx={cellTextSx}>{item.part_of_speech}</TableCell>
+                    <TableCell sx={{ ...cellTextSx, ...hideOnPhone }}>{item.part_of_speech}</TableCell>
                     <TableCell sx={cellTextSx} title={item.translation}>
                       {item.translation}
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={hideOnPhone}>
                       <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
                         <Chip size="small" color="success" label={`✓ ${item.correct_count}`} />
                         {item.incorrect_hard_count > 0 && (

@@ -3,19 +3,25 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
+from opentelemetry import trace
 from sqlalchemy.orm import Session
-from tenacity import RetryError
 
-from app.ai.base import AIProvider
-from app.ai.json_validation import AIGenerationError, generate_validated
-from app.ai.prompts.vocab_extraction import SYSTEM_PROMPT, build_user_prompt
-from app.models import VocabExtractionJob, VocabSource, VocabularyItem
+from app.agents.core import models as agent_models
+from app.agents.core.runner import AIBudgetExceeded, AIRunError, run_agent
+from app.agents.prompts.vocab_extraction import build_user_prompt
+from app.agents.vocab import vocab_extraction_agent
+from app.config import get_settings
+from app.jobs.runner import JobFailed, enqueue, job_handler
+from app.models import Job, PartOfSpeech, VocabExtractionJob, VocabSource, VocabularyItem
 from app.models.vocabulary import ExtractionStatus, FileType
 from app.parsing import docx_parser, pdf_parser, text_parser
-from app.schemas.ai_outputs import ExtractedVocabEntry, VocabExtractionAIOutput
+from app.repositories import vocabulary_repo
+from app.schemas.ai_outputs import ExtractedVocabEntry
 from app.schemas.vocab_extraction import VocabExtractionConfirmRequest
+from app.services import deck_service
 
 logger = logging.getLogger(__name__)
+tracer = trace.get_tracer(__name__)
 
 # Large documents are split into chunks rather than truncated, so every part of the
 # document gets a chance at extraction instead of silently dropping anything past a
@@ -23,6 +29,8 @@ logger = logging.getLogger(__name__)
 # request time on pathological uploads.
 CHUNK_SIZE_CHARS = 8_000
 MAX_CHUNKS = 15
+
+EXTRACTION_JOB = "vocab_extraction"
 
 _PARSERS = {
     FileType.PDF: pdf_parser.extract_text,
@@ -71,11 +79,15 @@ def _chunk_text(text: str, chunk_size: int = CHUNK_SIZE_CHARS) -> list[str]:
     return chunks[:MAX_CHUNKS]
 
 
+def _word_key(entry: ExtractedVocabEntry) -> tuple[str, PartOfSpeech]:
+    return entry.word.strip().lower(), entry.part_of_speech
+
+
 def _dedupe_entries(entries: list[ExtractedVocabEntry]) -> list[ExtractedVocabEntry]:
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple[str, PartOfSpeech]] = set()
     unique: list[ExtractedVocabEntry] = []
     for entry in entries:
-        key = (entry.word.strip().lower(), entry.part_of_speech.value)
+        key = _word_key(entry)
         if key in seen:
             continue
         seen.add(key)
@@ -83,84 +95,110 @@ def _dedupe_entries(entries: list[ExtractedVocabEntry]) -> list[ExtractedVocabEn
     return unique
 
 
-def _describe_error(exc: BaseException) -> str:
-    if isinstance(exc, RetryError):
-        inner = exc.last_attempt.exception()
-        if inner is not None:
-            return str(inner)
-    return str(exc)
-
-
-def run_extraction(
-    db: Session,
-    ai_provider: AIProvider,
-    user_id: uuid.UUID,
-    filename: str,
-    file_bytes: bytes,
-    max_retries: int,
+def start_extraction(
+    db: Session, user_id: uuid.UUID, filename: str, file_bytes: bytes
 ) -> VocabExtractionJob:
+    """Parse the file now (fast, and a broken file fails immediately), then hand the AI
+    extraction to a background job. The client polls GET /vocab-extraction/{id}."""
     file_type = resolve_file_type(filename)
-    job = VocabExtractionJob(
+    vocab_job = VocabExtractionJob(
         user_id=user_id,
         original_filename=filename,
         file_type=file_type,
         status=ExtractionStatus.PROCESSING,
     )
-    db.add(job)
+    db.add(vocab_job)
     db.commit()
-    db.refresh(job)
+    db.refresh(vocab_job)
 
     try:
         source_text = _PARSERS[file_type](file_bytes)
         if not source_text.strip():
             raise ValueError("No extractable text found in the uploaded file.")
+    except Exception as exc:  # noqa: BLE001 - corrupt/unsupported content becomes a failed job, not a 500
+        logger.info("Could not parse %s: %s", filename, exc)
+        vocab_job.status = ExtractionStatus.FAILED
+        vocab_job.error_message = str(exc) if isinstance(exc, ValueError) else f"Could not read the file: {exc}"
+        vocab_job.completed_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(vocab_job)
+        return vocab_job
 
-        chunks = _chunk_text(source_text)
+    enqueue(
+        db,
+        EXTRACTION_JOB,
+        user_id=user_id,
+        input={"vocab_job_id": str(vocab_job.id), "chunks": _chunk_text(source_text)},
+    )
+    db.refresh(vocab_job)
+    return vocab_job
+
+
+@job_handler(EXTRACTION_JOB)
+def _extraction_job(db: Session, job: Job) -> dict:
+    vocab_job = db.get(VocabExtractionJob, uuid.UUID(job.input["vocab_job_id"]))
+    chunks: list[str] = job.input["chunks"]
+    model = agent_models.get_model()
+    max_retries = get_settings().ai_json_max_retries
+
+    # One parent span per extraction, so every chunk's agent run lands in the same trace.
+    with tracer.start_as_current_span("vocab_extraction") as span:
+        span.set_attribute("app.vocab_job_id", str(vocab_job.id))
+        span.set_attribute("app.chunks", len(chunks))
         all_entries: list[ExtractedVocabEntry] = []
         chunk_errors: list[str] = []
+        budget_hit = False
 
         for i, chunk in enumerate(chunks):
             try:
-                result = generate_validated(
-                    ai_provider,
-                    SYSTEM_PROMPT,
+                result = run_agent(
+                    db,
+                    vocab_extraction_agent,
                     build_user_prompt(chunk),
-                    VocabExtractionAIOutput,
+                    feature="vocab_extraction",
+                    model=model,
+                    user_id=job.user_id,
                     max_retries=max_retries,
                 )
                 all_entries.extend(result.entries)
-            except Exception as chunk_exc:  # noqa: BLE001 - one bad chunk shouldn't sink the whole job
-                message = _describe_error(chunk_exc)
-                logger.warning("Chunk %d/%d failed to extract: %s", i + 1, len(chunks), message)
-                chunk_errors.append(message)
+            except AIBudgetExceeded as exc:
+                # No point trying the remaining chunks; keep whatever was extracted so far.
+                chunk_errors.append(str(exc))
+                budget_hit = True
+                break
+            except AIRunError as exc:  # one bad chunk shouldn't sink the whole job
+                logger.warning("Chunk %d/%d failed to extract: %s", i + 1, len(chunks), exc)
+                chunk_errors.append(str(exc))
 
-        if not all_entries and chunk_errors:
-            raise AIGenerationError("; ".join(chunk_errors[:3]))
+    vocab_job.completed_at = datetime.now(timezone.utc)
+    if not all_entries and chunk_errors:
+        vocab_job.status = ExtractionStatus.FAILED
+        vocab_job.error_message = "; ".join(chunk_errors[:3])
+        db.commit()  # persisted before raising: the runner rolls back on failure
+        raise JobFailed("budget_exceeded" if budget_hit else "ai_failed", vocab_job.error_message)
 
-        unique_entries = _dedupe_entries(all_entries)
-        job.status = ExtractionStatus.COMPLETED
-        job.raw_ai_output = VocabExtractionAIOutput(entries=unique_entries).model_dump(mode="json")
-        if chunk_errors:
-            job.error_message = (
-                f"{len(chunk_errors)} of {len(chunks)} chunk(s) failed to extract; "
-                "showing results from the rest."
-            )
-    except (AIGenerationError, ValueError) as exc:
-        job.status = ExtractionStatus.FAILED
-        job.error_message = str(exc)
-    except Exception as exc:  # noqa: BLE001 - any provider/network failure becomes a failed job, not a 500
-        logger.exception("AI vocab extraction failed for job %s", job.id)
-        job.status = ExtractionStatus.FAILED
-        job.error_message = f"AI provider request failed: {_describe_error(exc)}"
-
-    job.completed_at = datetime.now(timezone.utc)
+    unique_entries = _dedupe_entries(all_entries)
+    # A plain lookup, not an agent tool: deterministic, free, and works on offline models
+    # without tool calling. The review screen leaves flagged words unticked by default.
+    existing = vocabulary_repo.existing_word_keys(db, job.user_id, {_word_key(e) for e in unique_entries})
+    vocab_job.status = ExtractionStatus.COMPLETED
+    vocab_job.raw_ai_output = {
+        "entries": [
+            {**e.model_dump(mode="json"), "already_in_cards": _word_key(e) in existing} for e in unique_entries
+        ]
+    }
+    if chunk_errors:
+        vocab_job.error_message = (
+            f"{len(chunk_errors)} of {len(chunks)} chunk(s) failed to extract; showing results from the rest."
+        )
     db.commit()
-    db.refresh(job)
-    return job
+    return {"vocab_job_id": str(vocab_job.id), "entries": len(unique_entries)}
 
 
-def get_job_or_404(db: Session, user_id: uuid.UUID, job_id: uuid.UUID) -> VocabExtractionJob:
-    job = db.get(VocabExtractionJob, job_id)
+def get_job_or_404(
+    db: Session, user_id: uuid.UUID, job_id: uuid.UUID, lock: bool = False
+) -> VocabExtractionJob:
+    job = db.get(VocabExtractionJob, job_id, with_for_update=lock)
     if job is None or job.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Extraction job not found")
     return job
@@ -169,12 +207,20 @@ def get_job_or_404(db: Session, user_id: uuid.UUID, job_id: uuid.UUID) -> VocabE
 def confirm_extraction(
     db: Session, user_id: uuid.UUID, job_id: uuid.UUID, payload: VocabExtractionConfirmRequest
 ) -> list[VocabularyItem]:
-    job = get_job_or_404(db, user_id, job_id)
+    # Row lock so two concurrent confirms (e.g. a double click) can't both pass the check below.
+    job = get_job_or_404(db, user_id, job_id, lock=True)
     if job.status != ExtractionStatus.COMPLETED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only completed extraction jobs can be confirmed.",
         )
+    if job.confirmed_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This extraction job has already been confirmed.",
+        )
+    if payload.deck_id is not None:
+        deck_service.get_deck_or_404(db, user_id, payload.deck_id)
 
     created_items = []
     for entry in payload.entries:
@@ -188,6 +234,7 @@ def confirm_extraction(
         db.add(item)
         created_items.append(item)
 
+    job.confirmed_at = datetime.now(timezone.utc)
     db.commit()
     for item in created_items:
         db.refresh(item)

@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
 
 export class ApiError extends Error {
   status: number;
@@ -48,3 +48,18 @@ export const apiClient = {
   // No Content-Type header here: the browser sets multipart/form-data with the correct boundary.
   postForm: <T>(path: string, formData: FormData) => requestForm<T>(path, formData),
 };
+
+/** A message fit to show the user: FastAPI's `detail` when present, else the error's own text. */
+export function describeError(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    try {
+      const detail = JSON.parse(error.message)?.detail;
+      if (typeof detail === "string") return detail;
+    } catch {
+      // Not JSON (e.g. a proxy error page); fall through to the fallback.
+    }
+    return fallback;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}

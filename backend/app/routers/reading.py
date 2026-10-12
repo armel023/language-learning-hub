@@ -3,9 +3,6 @@ import uuid
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.ai.base import AIProvider
-from app.ai.factory import get_ai_provider
-from app.config import Settings, get_settings
 from app.core.dependencies import get_current_user
 from app.db.session import get_db
 from app.models import User
@@ -16,6 +13,7 @@ from app.schemas.reading import (
     ReadingExerciseGenerateRequest,
     ReadingExerciseSummary,
 )
+from app.schemas.job import JobRead
 from app.services import reading_service, scoring_service
 
 router = APIRouter(prefix="/reading", tags=["reading"])
@@ -35,15 +33,16 @@ def get_exercise(exercise_id: uuid.UUID, db: Session = Depends(get_db)) -> Readi
     return ReadingExerciseDetail.model_validate(exercise)
 
 
-@router.post("/exercises/generate", response_model=ReadingExerciseDetail)
+@router.post("/exercises/generate", response_model=JobRead, status_code=202)
 def generate_exercise(
     payload: ReadingExerciseGenerateRequest,
     db: Session = Depends(get_db),
-    ai_provider: AIProvider = Depends(get_ai_provider),
-    settings: Settings = Depends(get_settings),
-) -> ReadingExerciseDetail:
-    exercise = reading_service.generate_exercise(db, ai_provider, payload, settings.ai_json_max_retries)
-    return ReadingExerciseDetail.model_validate(exercise)
+    current_user: User = Depends(get_current_user),
+) -> JobRead:
+    """Starts generation in the background. Poll GET /jobs/{id}; on success its result
+    holds {"exercise_id": ...}."""
+    job = reading_service.start_generation(db, current_user.id, payload)
+    return JobRead.model_validate(job)
 
 
 @router.post("/attempts", response_model=ReadingAttemptResult)
